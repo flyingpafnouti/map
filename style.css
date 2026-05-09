@@ -1,0 +1,330 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f5f5;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.header h1 {
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.container {
+    display: flex;
+    height: calc(100vh - 70px);
+}
+
+.sidebar {
+    width: 320px;
+    min-width: 250px;
+    max-width: 600px;
+    background: white;
+    border-right: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 5px;
+    background: linear-gradient(90deg, transparent, rgba(0, 123, 255, 0.1));
+    cursor: col-resize;
+    z-index: 1000;
+    transition: all 0.2s ease;
+}
+
+.resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 30px;
+    background: repeating-linear-gradient(
+        to bottom,
+        #ddd 0px,
+        #ddd 3px,
+        transparent 3px,
+        transparent 6px
+    );
+    border-radius: 2px;
+}
+
+.resize-handle:hover {
+    background: linear-gradient(90deg, transparent, rgba(0, 123, 255, 0.3));
+}
+
+.resize-handle:hover::after {
+    background: repeating-linear-gradient(
+        to bottom,
+        #007bff 0px,
+        #007bff 3px,
+        transparent 3px,
+        transparent 6px
+    );
+}
+
+.resize-handle.dragging {
+    background: linear-gradient(90deg, transparent, rgba(0, 123, 255, 0.5));
+}
+
+.resize-handle.dragging::after {
+    background: repeating-linear-gradient(
+        to bottom,
+        #007bff 0px,
+        #007bff 4px,
+        transparent 4px,
+        transparent 8px
+    );
+}
+
+.controls {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.control-group {
+    margin-bottom: 15px;
+}
+
+.control-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #333;
+}
+
+.control-group select, .control-group input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.btn-group {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.btn {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary { background: #667eea; color: white; }
+.btn-secondary { background: #6c757d; color: white; }
+.btn-success { background: #28a745; color: white; }
+.btn-warning { background: #ffc107; color: black; }
+.btn-danger { background: #dc3545; color: white; }
+.btn-info { background: #17a2b8; color: white; }
+.btn-pink { background: #e83e8c; color: white; }
+
+#map.heading-mode {
+    cursor: crosshair;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.btn-active {
+    background: #ff6b6b !important;
+    color: white !important;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.info-panel {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.info-section {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.info-section h3 {
+    color: #495057;
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.waypoint-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.waypoint-info { flex: 1; }
+
+.waypoint-name {
+    font-weight: 600;
+    color: #495057;
+}
+
+.waypoint-coords {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.waypoint-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+#map {
+    flex: 1;
+    height: 100%;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+}
+
+.modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 400px;
+    max-width: 90vw;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #aaa;
+}
+
+.close:hover { color: #000; }
+
+.modal-body { margin-bottom: 15px; }
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.form-group { margin-bottom: 15px; }
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #333;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+
+.log {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #495057;
+}
+
+.log-entry {
+    margin-bottom: 5px;
+    padding: 2px 5px;
+    border-radius: 3px;
+}
+
+.log-info { background: #d1ecf1; }
+.log-success { background: #d4edda; }
+.log-error { background: #f8d7da; }
+
+@media (max-width: 768px) {
+    .container { flex-direction: column; }
+    .sidebar { width: 100%; height: 300px; }
+    .btn-group { grid-template-columns: 1fr; }
+}
