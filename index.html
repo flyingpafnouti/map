@@ -40,17 +40,17 @@
                     <button class="btn btn-info" onclick="drawPath()">
                         <i class="fas fa-route"></i> Tracer Chemin
                     </button>
-                    <button class="btn btn-warning" id="bearingBtn" onclick="toggleBearingMode()">
+                    <button class="btn btn-warning" id="headingBtn" onclick="toggleHeadingMode()">
                         <i class="fas fa-compass"></i> Mesurer Cap
-                    </button>
-                    <button class="btn btn-pink" id="headingBtn" onclick="toggleHeadingMode()">
-                        <i class="fas fa-location-arrow"></i> Heading
                     </button>
                     <button class="btn btn-secondary" onclick="getCoordinates()">
                         <i class="fas fa-crosshairs"></i> Coordonnées
                     </button>
                     <button class="btn btn-altitude" id="altitudeBtn" onclick="toggleAltitudeMode()">
                         <i class="fas fa-mountain"></i> Altitude
+                    </button>
+                    <button class="btn btn-altitude" onclick="showElevationProfile()">
+                        <i class="fas fa-chart-area"></i> Profil Alti
                     </button>
                     <button class="btn btn-danger" onclick="clearMap()">
                         <i class="fas fa-eraser"></i> Effacer
@@ -115,30 +115,24 @@
         </div>
     </div>
 
-    <div id="bearingModal" class="modal">
-        <div class="modal-content">
+    <div id="profileModal" class="modal">
+        <div class="modal-content modal-wide">
             <div class="modal-header">
-                <div class="modal-title">Mesure de Cap</div>
-                <button class="close" onclick="closeModal('bearingModal')">&times;</button>
+                <div class="modal-title">Profil altimétrique</div>
+                <button class="close" onclick="closeModal('profileModal')">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="bearingStart">Point de départ (lat,lon)</label>
-                    <input type="text" id="bearingStart" placeholder="48.856614, 2.352222">
-                </div>
-                <div class="form-group">
-                    <label for="bearingEnd">Point d'arrivée (lat,lon)</label>
-                    <input type="text" id="bearingEnd" placeholder="48.860000, 2.355000">
-                </div>
+                <div id="profileStats" class="profile-stats"></div>
+                <canvas id="profileChart" height="220"></canvas>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('bearingModal')">Annuler</button>
-                <button class="btn btn-warning" onclick="confirmMeasureBearing()">Mesurer</button>
+                <button class="btn btn-secondary" onclick="closeModal('profileModal')">Fermer</button>
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

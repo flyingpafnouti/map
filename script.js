@@ -2,12 +2,8 @@ let map;
 let waypoints = [];
 let currentLat = 48.024376;
 let currentLon = -1.746483;
-let bearingLine = null;
 let pathLine = null;
 let markers = [];
-let bearingMode = false;
-let bearingPoints = [];
-let bearingMarkers = [];
 let pathArrows = [];
 let headingMode = false;
 let headingPoints = [];
@@ -71,7 +67,7 @@ function initMap() {
                 const dist = L.latLng(startLat, startLon).distanceTo(L.latLng(endLat, endLon));
                 const distStr = dist >= 1000 ? `${(dist / 1000).toFixed(3)} km` : `${dist.toFixed(1)} m`;
 
-                log(`🎯 Heading A→B: ${headingDeg.toFixed(1)}° (${cardinal}) | ${bearingRad.toFixed(4)} rad | Distance: ${distStr}`, 'success');
+                log(`🧭 Cap A→B: ${headingDeg.toFixed(1)}° (${cardinal}) | ${bearingRad.toFixed(4)} rad | Distance: ${distStr}`, 'success');
                 headingPoints = [];
             }
             return;
@@ -87,80 +83,15 @@ function initMap() {
         e.originalEvent.preventDefault();
         const lat = e.latlng.lat;
         const lon = e.latlng.lng;
-
-        if (bearingMode) {
-            bearingPoints.push([lat, lon]);
-
-            if (bearingPoints.length === 1) {
-                log('📍 Point de départ sélectionné. Clic droit pour le point d\'arrivée...', 'info');
-                const startMarker = L.marker([lat, lon], {
-                    icon: L.icon({
-                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41],
-                        popupAnchor: [1, -34], shadowSize: [41, 41]
-                    })
-                }).addTo(map).bindPopup('Point de départ').openPopup();
-                bearingPoints.startMarker = startMarker;
-
-            } else if (bearingPoints.length === 2) {
-                const startLat = bearingPoints[0][0];
-                const startLon = bearingPoints[0][1];
-                const endLat = bearingPoints[1][0];
-                const endLon = bearingPoints[1][1];
-
-                if (bearingPoints.startMarker) map.removeLayer(bearingPoints.startMarker);
-                if (bearingLine) map.removeLayer(bearingLine);
-
-                bearingLine = L.polyline([[startLat, startLon], [endLat, endLon]], {
-                    color: 'blue', weight: 3, dashArray: '10, 5'
-                }).addTo(map);
-
-                const startMarker = L.marker([startLat, startLon], {
-                    icon: L.icon({
-                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41],
-                        popupAnchor: [1, -34], shadowSize: [41, 41]
-                    })
-                }).addTo(map).bindPopup('Début de cap');
-
-                const endMarker = L.marker([endLat, endLon], {
-                    icon: L.icon({
-                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png',
-                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41],
-                        popupAnchor: [1, -34], shadowSize: [41, 41]
-                    })
-                }).addTo(map).bindPopup('Fin de cap');
-
-                bearingMarkers = [startMarker, endMarker];
-
-                const bearing = calculateBearing(startLat, startLon, endLat, endLon);
-                const distance = L.latLng(startLat, startLon).distanceTo(L.latLng(endLat, endLon));
-
-                log(`🧭 Cap mesuré: ${bearing.toFixed(3)} rad (${(bearing * 180 / Math.PI).toFixed(1)}°) - Distance: ${(distance / 1000).toFixed(3)} km`, 'success');
-
-                setTimeout(() => {
-                    bearingMode = false;
-                    bearingPoints = [];
-                    document.getElementById('bearingBtn').classList.remove('btn-active');
-                    document.getElementById('bearingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
-                    log('Mode mesure de cap désactivé automatiquement', 'info');
-                }, 100);
-            }
-        } else {
-            const name = `Point ${waypoints.length + 1}`;
-            addWaypointAt(lat, lon, name);
-        }
+        const name = `Point ${waypoints.length + 1}`;
+        addWaypointAt(lat, lon, name);
     });
 
     updateCurrentPosition();
     log('Carte initialisée - Prêt à naviguer !', 'success');
     log('💡 Clic gauche = définir position actuelle', 'info');
     log('💡 Clic droit = ajouter waypoint (mode normal)', 'info');
-    log('💡 Bouton "Mesurer Cap" + clic droit = mesurer cap', 'info');
-    log('💡 Bouton "Heading" + 2 clics gauches = mesurer heading (0-360°)', 'info');
+    log('💡 Bouton "Mesurer Cap" + 2 clics gauches = mesurer cap (0-360°)', 'info');
     log('💡 Glisser les marqueurs = déplacer les waypoints', 'info');
 }
 
@@ -354,89 +285,20 @@ function addArrowsToPath(polyline, latlngs) {
     }
 }
 
-function clearBearingElements() {
-    bearingMarkers.forEach(marker => { if (marker && map.hasLayer(marker)) map.removeLayer(marker); });
-    bearingMarkers = [];
-    if (bearingLine && map.hasLayer(bearingLine)) { map.removeLayer(bearingLine); bearingLine = null; }
-    if (bearingPoints.startMarker && map.hasLayer(bearingPoints.startMarker)) {
-        map.removeLayer(bearingPoints.startMarker);
-        bearingPoints.startMarker = null;
-    }
-    bearingPoints = [];
-    map.eachLayer(function(layer) {
-        if (layer instanceof L.Marker) {
-            const icon = layer.options.icon;
-            if (icon && icon.options && icon.options.iconUrl &&
-                (icon.options.iconUrl.includes('marker-icon-green.png') ||
-                 icon.options.iconUrl.includes('marker-icon-orange.png'))) {
-                map.removeLayer(layer);
-            }
-        }
-    });
-}
-
-function toggleBearingMode() {
-    bearingMode = !bearingMode;
-    bearingPoints = [];
-    if (bearingMode) {
-        document.getElementById('bearingBtn').classList.add('btn-active');
-        document.getElementById('bearingBtn').innerHTML = '<i class="fas fa-compass"></i> Mode Cap (Actif)';
-        log('🧭 Mode mesure de cap activé - Clic droit pour sélectionner 2 points', 'success');
-    } else {
-        document.getElementById('bearingBtn').classList.remove('btn-active');
-        document.getElementById('bearingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
-        clearBearingElements();
-        log('Mode mesure de cap désactivé - Éléments de mesure effacés', 'info');
-    }
-}
-
-function measureBearing() { showModal('bearingModal'); }
-
-function confirmMeasureBearing() {
-    const start = document.getElementById('bearingStart').value.trim();
-    const end = document.getElementById('bearingEnd').value.trim();
-    if (!start || !end) { alert('Veuillez remplir les deux coordonnées'); return; }
-
-    try {
-        const startParts = start.split(',');
-        const endParts = end.split(',');
-        const lat1 = parseFloat(startParts[0].trim()), lon1 = parseFloat(startParts[1].trim());
-        const lat2 = parseFloat(endParts[0].trim()), lon2 = parseFloat(endParts[1].trim());
-
-        if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) throw new Error('Coordonnées invalides');
-
-        if (bearingLine) map.removeLayer(bearingLine);
-        bearingLine = L.polyline([[lat1, lon1], [lat2, lon2]], { color: 'blue', weight: 3 }).addTo(map);
-
-        const bearing = calculateBearing(lat1, lon1, lat2, lon2);
-        const distance = L.latLng(lat1, lon1).distanceTo(L.latLng(lat2, lon2));
-
-        closeModal('bearingModal');
-        log(`Cap mesuré: ${bearing.toFixed(3)} rad (${(bearing * 180 / Math.PI).toFixed(1)}°) - Distance: ${(distance / 1000).toFixed(3)} km`, 'success');
-    } catch (error) {
-        log('Erreur: ' + error.message, 'error');
-    }
-}
-
 function toggleHeadingMode() {
     headingMode = !headingMode;
     headingPoints = [];
     if (headingMode) {
-        if (bearingMode) {
-            bearingMode = false; bearingPoints = [];
-            document.getElementById('bearingBtn').classList.remove('btn-active');
-            document.getElementById('bearingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
-        }
         document.getElementById('headingBtn').classList.add('btn-active');
-        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-location-arrow"></i> Heading (Actif)';
+        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap (Actif)';
         document.getElementById('map').classList.add('heading-mode');
-        log('🎯 Mode Heading activé - Clic gauche sur 2 points pour mesurer', 'success');
+        log('🧭 Mode mesure de cap activé - Clic gauche sur 2 points pour mesurer', 'success');
     } else {
         document.getElementById('headingBtn').classList.remove('btn-active');
-        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-location-arrow"></i> Heading';
+        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
         document.getElementById('map').classList.remove('heading-mode');
         clearHeadingElements();
-        log('Mode Heading désactivé', 'info');
+        log('Mode mesure de cap désactivé', 'info');
     }
 }
 
@@ -537,27 +399,118 @@ function hideAltitudeTooltip() {
     if (tip) tip.style.display = 'none';
 }
 
-function clearMap() {
-    if (bearingMode) {
-        bearingMode = false;
-        document.getElementById('bearingBtn').classList.remove('btn-active');
-        document.getElementById('bearingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
+function showElevationProfile() {
+    if (waypoints.length < 2) {
+        log('⚠️ Il faut au moins 2 waypoints pour le profil altimétrique', 'info');
+        return;
     }
+
+    // Échantillonne des points le long du chemin avec leur distance cumulée
+    const maxSamples = 100;
+    const pts = waypoints.map(wp => L.latLng(wp.lat, wp.lon));
+    let totalDist = 0;
+    for (let i = 0; i < pts.length - 1; i++) totalDist += pts[i].distanceTo(pts[i + 1]);
+
+    const samples = [{ lat: pts[0].lat, lon: pts[0].lng, dist: 0 }];
+    let acc = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const segDist = a.distanceTo(b);
+        const steps = Math.max(1, Math.round((segDist / totalDist) * maxSamples));
+        for (let s = 1; s <= steps; s++) {
+            const t = s / steps;
+            samples.push({
+                lat: a.lat + (b.lat - a.lat) * t,
+                lon: a.lng + (b.lng - a.lng) * t,
+                dist: acc + segDist * t
+            });
+        }
+        acc += segDist;
+    }
+
+    log(`⛰️ Calcul du profil altimétrique (${samples.length} points)...`, 'info');
+
+    const locations = samples.map(p => `${p.lat},${p.lon}`).join('|');
+    fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${locations}`)
+        .then(r => r.json())
+        .then(data => {
+            const elevations = data.results.map(r => r.elevation);
+            renderElevationProfile(samples, elevations, totalDist);
+        })
+        .catch(err => log(`Erreur profil altimétrique: ${err.message}`, 'error'));
+}
+
+let elevationChart = null;
+
+function renderElevationProfile(samples, elevations, totalDist) {
+    let gain = 0, loss = 0;
+    for (let i = 1; i < elevations.length; i++) {
+        const d = elevations[i] - elevations[i - 1];
+        if (d > 0) gain += d; else loss -= d;
+    }
+    const minEle = Math.min(...elevations);
+    const maxEle = Math.max(...elevations);
+
+    document.getElementById('profileStats').innerHTML =
+        `Distance: <b>${(totalDist / 1000).toFixed(2)} km</b> &nbsp;|&nbsp; ` +
+        `D+: <b>${gain.toFixed(0)} m</b> &nbsp;|&nbsp; D-: <b>${loss.toFixed(0)} m</b> &nbsp;|&nbsp; ` +
+        `Alt min/max: <b>${minEle.toFixed(0)} / ${maxEle.toFixed(0)} m</b>`;
+
+    showModal('profileModal');
+
+    const labels = samples.map(p => (p.dist / 1000).toFixed(2));
+    const ctx = document.getElementById('profileChart').getContext('2d');
+    if (elevationChart) elevationChart.destroy();
+    elevationChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Altitude (m)',
+                data: elevations,
+                borderColor: '#795548',
+                backgroundColor: 'rgba(121, 85, 72, 0.25)',
+                fill: true,
+                pointRadius: 0,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: items => `Distance: ${items[0].label} km`,
+                        label: item => `Altitude: ${item.parsed.y} m`
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Distance (km)' }, ticks: { maxTicksLimit: 10 } },
+                y: { title: { display: true, text: 'Altitude (m)' } }
+            }
+        }
+    });
+
+    log(`⛰️ Profil tracé - D+: ${gain.toFixed(0)} m, D-: ${loss.toFixed(0)} m`, 'success');
+}
+
+function clearMap() {
     if (headingMode) {
         headingMode = false;
         document.getElementById('headingBtn').classList.remove('btn-active');
-        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-location-arrow"></i> Heading';
+        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
         document.getElementById('map').classList.remove('heading-mode');
     }
     if (altitudeMode) toggleAltitudeMode();
-    headingLine = null; headingMarkers = []; headingPoints = [];
+    clearHeadingElements();
     waypoints = [];
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
     if (pathLine) { map.removeLayer(pathLine); pathLine = null; }
     pathArrows.forEach(arrow => { if (map.hasLayer(arrow)) map.removeLayer(arrow); });
     pathArrows = [];
-    clearBearingElements();
     const layersToRemove = [];
     map.eachLayer(function(layer) { if (!(layer instanceof L.TileLayer)) layersToRemove.push(layer); });
     layersToRemove.forEach(layer => map.removeLayer(layer));
@@ -715,7 +668,7 @@ document.addEventListener('DOMContentLoaded', function() {
     log('  • Clic gauche sur carte = changer position', 'info');
     log('  • Clic droit sur carte = ajouter waypoint', 'info');
     log('  • Bouton "Mesurer Cap" = activer mode mesure', 'info');
-    log('  • Mode cap + clic droit = mesurer azimut', 'info');
+    log('  • Mode cap + 2 clics gauches = mesurer azimut', 'info');
     log('  • Glisser marqueur = déplacer waypoint', 'info');
     log('  • Clic droit sur marqueur = supprimer', 'info');
     log('  • Glisser bord droit panneau = redimensionner', 'info');
