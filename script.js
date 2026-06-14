@@ -1,7 +1,7 @@
 let map;
 let waypoints = [];
-let currentLat = 48.856614;
-let currentLon = 2.352222;
+let currentLat = 48.024376;
+let currentLon = -1.746483;
 let bearingLine = null;
 let pathLine = null;
 let markers = [];
@@ -13,6 +13,8 @@ let headingMode = false;
 let headingPoints = [];
 let headingLine = null;
 let headingMarkers = [];
+let altitudeMode = false;
+let altitudeTimer = null;
 
 function initMap() {
     map = L.map('map').setView([currentLat, currentLon], 10);
@@ -467,6 +469,74 @@ function getCoordinates() {
     });
 }
 
+function getAltitude(lat, lon) {
+    const url = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`;
+    return fetch(url)
+        .then(response => response.json())
+        .then(data => data.results[0].elevation);
+}
+
+function toggleAltitudeMode() {
+    altitudeMode = !altitudeMode;
+    if (altitudeMode) {
+        document.getElementById('altitudeBtn').classList.add('btn-active');
+        document.getElementById('altitudeBtn').innerHTML = '<i class="fas fa-mountain"></i> Altitude (Actif)';
+        document.getElementById('map').classList.add('altitude-mode');
+        map.on('mousemove', onAltitudeMouseMove);
+        map.on('mouseout', hideAltitudeTooltip);
+        log('⛰️ Mode Altitude activé - Déplacez le curseur sur la carte', 'success');
+    } else {
+        document.getElementById('altitudeBtn').classList.remove('btn-active');
+        document.getElementById('altitudeBtn').innerHTML = '<i class="fas fa-mountain"></i> Altitude';
+        document.getElementById('map').classList.remove('altitude-mode');
+        map.off('mousemove', onAltitudeMouseMove);
+        map.off('mouseout', hideAltitudeTooltip);
+        hideAltitudeTooltip();
+        if (altitudeTimer) { clearTimeout(altitudeTimer); altitudeTimer = null; }
+        log('Mode Altitude désactivé', 'info');
+    }
+}
+
+function onAltitudeMouseMove(e) {
+    const lat = e.latlng.lat;
+    const lon = e.latlng.lng;
+    showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><i>altitude...</i>`);
+
+    if (altitudeTimer) clearTimeout(altitudeTimer);
+    altitudeTimer = setTimeout(() => {
+        getAltitude(lat, lon)
+            .then(elevation => {
+                if (!altitudeMode) return;
+                showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><b>⛰️ ${elevation} m</b>`);
+                log(`⛰️ Altitude: ${elevation} m (${lat.toFixed(6)}, ${lon.toFixed(6)})`, 'info');
+            })
+            .catch(error => {
+                if (!altitudeMode) return;
+                showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><i>erreur</i>`);
+                log(`Erreur altitude: ${error.message}`, 'error');
+            });
+    }, 400);
+}
+
+function showAltitudeTooltip(containerPoint, html) {
+    let tip = document.getElementById('altitudeTooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'altitudeTooltip';
+        tip.className = 'altitude-tooltip';
+        document.getElementById('map').appendChild(tip);
+    }
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    tip.style.left = (containerPoint.x + 15) + 'px';
+    tip.style.top = (containerPoint.y + 15) + 'px';
+}
+
+function hideAltitudeTooltip() {
+    const tip = document.getElementById('altitudeTooltip');
+    if (tip) tip.style.display = 'none';
+}
+
 function clearMap() {
     if (bearingMode) {
         bearingMode = false;
@@ -479,6 +549,7 @@ function clearMap() {
         document.getElementById('headingBtn').innerHTML = '<i class="fas fa-location-arrow"></i> Heading';
         document.getElementById('map').classList.remove('heading-mode');
     }
+    if (altitudeMode) toggleAltitudeMode();
     headingLine = null; headingMarkers = []; headingPoints = [];
     waypoints = [];
     markers.forEach(marker => map.removeLayer(marker));
