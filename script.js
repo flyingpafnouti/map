@@ -11,6 +11,12 @@ let headingLine = null;
 let headingMarkers = [];
 let altitudeMode = false;
 let altitudeTimer = null;
+let measureMode = false;
+let measureFinished = false;
+let measurePoints = [];
+let measureLine = null;
+let measurePreviewLine = null;
+let measureVertexMarkers = [];
 
 function initMap() {
     map = L.map('map').setView([currentLat, currentLon], 10);
@@ -20,6 +26,11 @@ function initMap() {
     }).addTo(map);
 
     map.on('click', function(e) {
+        if (measureMode) {
+            addMeasurePoint(e.latlng.lat, e.latlng.lng);
+            return;
+        }
+
         if (headingMode) {
             const lat = e.latlng.lat;
             const lon = e.latlng.lng;
@@ -81,6 +92,10 @@ function initMap() {
 
     map.on('contextmenu', function(e) {
         e.originalEvent.preventDefault();
+        if (measureMode) {
+            finishMeasure();
+            return;
+        }
         const lat = e.latlng.lat;
         const lon = e.latlng.lng;
         const name = `Point ${waypoints.length + 1}`;
@@ -323,6 +338,143 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
     return Math.atan2(y, x);
 }
 
+function toggleMeasureMode() {
+    measureMode = !measureMode;
+    const btn = document.getElementById('measureBtn');
+    if (measureMode) {
+        btn.classList.add('btn-active');
+        btn.innerHTML = '<i class="fas fa-ruler"></i> Mesurer Distance (Actif)';
+        document.getElementById('map').classList.add('measure-mode');
+        map.doubleClickZoom.disable();
+        map.on('mousemove', onMeasureMouseMove);
+        log('📏 Mode Mesure activé - Clic gauche = ajouter un point, clic droit = terminer', 'success');
+    } else {
+        btn.classList.remove('btn-active');
+        btn.innerHTML = '<i class="fas fa-ruler"></i> Mesurer Distance';
+        document.getElementById('map').classList.remove('measure-mode');
+        map.doubleClickZoom.enable();
+        map.off('mousemove', onMeasureMouseMove);
+        clearMeasure();
+        log('Mode Mesure désactivé', 'info');
+    }
+}
+
+function formatDistance(m) {
+    return m >= 1000 ? `${(m / 1000).toFixed(3)} km` : `${m.toFixed(1)} m`;
+}
+
+function measureTotalDistance() {
+    let total = 0;
+    for (let i = 0; i < measurePoints.length - 1; i++) {
+        total += L.latLng(measurePoints[i][0], measurePoints[i][1])
+            .distanceTo(L.latLng(measurePoints[i + 1][0], measurePoints[i + 1][1]));
+    }
+    return total;
+}
+
+function addMeasurePoint(lat, lon) {
+    // Un nouveau clic après une mesure terminée démarre une nouvelle mesure
+    if (measureFinished) {
+        clearMeasure();
+        measureFinished = false;
+    }
+    measurePoints.push([lat, lon]);
+    redrawMeasure();
+    if (measurePoints.length === 1) {
+        log('📏 Premier point posé. Continuez à cliquer, clic droit pour terminer.', 'info');
+    } else {
+        log(`📏 Point ${measurePoints.length} - Distance totale: ${formatDistance(measureTotalDistance())}`, 'info');
+    }
+}
+
+function redrawMeasure() {
+    if (measureLine) { map.removeLayer(measureLine); measureLine = null; }
+    measureVertexMarkers.forEach(m => map.removeLayer(m));
+    measureVertexMarkers = [];
+
+    if (measurePoints.length >= 2) {
+        measureLine = L.polyline(measurePoints, {
+            color: '#e83e8c', weight: 3, opacity: 0.9
+        }).addTo(map);
+    }
+
+    let cumul = 0;
+    measurePoints.forEach((pt, i) => {
+        if (i > 0) {
+            cumul += L.latLng(measurePoints[i - 1][0], measurePoints[i - 1][1])
+                .distanceTo(L.latLng(pt[0], pt[1]));
+        }
+        const label = i === 0 ? 'Départ' : formatDistance(cumul);
+        const marker = L.marker(pt, {
+            icon: L.divIcon({
+                className: 'measure-label',
+                html: label,
+                iconSize: null,
+                iconAnchor: [0, -8]
+            }),
+            interactive: false
+        }).addTo(map);
+        measureVertexMarkers.push(marker);
+    });
+}
+
+function onMeasureMouseMove(e) {
+    if (!measureMode || measureFinished || measurePoints.length === 0) {
+        hideMeasureTooltip();
+        return;
+    }
+    const last = measurePoints[measurePoints.length - 1];
+    if (measurePreviewLine) { map.removeLayer(measurePreviewLine); measurePreviewLine = null; }
+    measurePreviewLine = L.polyline([last, [e.latlng.lat, e.latlng.lng]], {
+        color: '#e83e8c', weight: 2, dashArray: '4, 6', opacity: 0.7
+    }).addTo(map);
+
+    const segDist = L.latLng(last[0], last[1]).distanceTo(e.latlng);
+    const total = measureTotalDistance() + segDist;
+    showMeasureTooltip(e.containerPoint,
+        `Segment: ${formatDistance(segDist)}<br><b>Total: ${formatDistance(total)}</b>`);
+}
+
+function finishMeasure() {
+    if (measurePoints.length < 2) {
+        log('⚠️ Ajoutez au moins 2 points pour mesurer une distance', 'info');
+        return;
+    }
+    measureFinished = true;
+    if (measurePreviewLine) { map.removeLayer(measurePreviewLine); measurePreviewLine = null; }
+    hideMeasureTooltip();
+    log(`📏 Mesure terminée: ${formatDistance(measureTotalDistance())} sur ${measurePoints.length} points`, 'success');
+}
+
+function clearMeasure() {
+    if (measureLine) { map.removeLayer(measureLine); measureLine = null; }
+    if (measurePreviewLine) { map.removeLayer(measurePreviewLine); measurePreviewLine = null; }
+    measureVertexMarkers.forEach(m => map.removeLayer(m));
+    measureVertexMarkers = [];
+    measurePoints = [];
+    measureFinished = false;
+    hideMeasureTooltip();
+}
+
+function showMeasureTooltip(containerPoint, html) {
+    let tip = document.getElementById('measureTooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'measureTooltip';
+        tip.className = 'altitude-tooltip';
+        document.getElementById('map').appendChild(tip);
+    }
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    tip.style.left = (containerPoint.x + 15) + 'px';
+    tip.style.top = (containerPoint.y + 15) + 'px';
+}
+
+function hideMeasureTooltip() {
+    const tip = document.getElementById('measureTooltip');
+    if (tip) tip.style.display = 'none';
+}
+
 function getCoordinates() {
     const coords = `${currentLat.toFixed(6)},${currentLon.toFixed(6)}`;
     navigator.clipboard.writeText(coords).then(() => {
@@ -504,7 +656,9 @@ function clearMap() {
         document.getElementById('map').classList.remove('heading-mode');
     }
     if (altitudeMode) toggleAltitudeMode();
+    if (measureMode) toggleMeasureMode();
     clearHeadingElements();
+    clearMeasure();
     waypoints = [];
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
