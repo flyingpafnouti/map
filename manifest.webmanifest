@@ -1,6 +1,6 @@
 {
-  "name": "Navigateur Cartographique",
-  "short_name": "NavCarto",
+  "name": "Carto",
+  "short_name": "Carto",
   "description": "Waypoints, mesures de cap et de distance, altimétrie et profils sur fonds OSM, IGN, marine et satellite.",
   "lang": "fr",
   "dir": "ltr",
