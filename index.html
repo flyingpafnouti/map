@@ -2,103 +2,148 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Navigateur Cartographique Web</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Navigateur Cartographique</title>
+    <meta name="description" content="Waypoints, mesures de cap et de distance, altimétrie et profils sur fonds OSM, IGN, marine et satellite.">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="NavCarto">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div class="header">
-        <h1><i class="fas fa-map-marked-alt"></i> Navigateur Cartographique Web</h1>
-    </div>
+    <div id="map"></div>
 
-    <div class="container">
-        <div class="sidebar" id="sidebar">
-            <div class="resize-handle" id="resizeHandle"></div>
-            <div class="controls">
-                <div class="control-group">
-                    <label for="mapType">Type de carte</label>
-                    <select id="mapType">
-                        <option value="openstreetmap">OpenStreetMap</option>
-                        <option value="satellite">Vue Satellite</option>
-                    </select>
-                </div>
+    <aside class="sidebar" id="sidebar">
+        <div class="resize-handle" id="resizeHandle"></div>
 
-                <div class="control-group">
-                    <label for="searchLocation">Recherche / Navigation</label>
-                    <input type="text" id="searchLocation" placeholder="Adresse ou coordonnées (lat,lon)">
-                </div>
-
-                <div class="btn-group">
-                    <button class="btn btn-primary" onclick="goToLocation()">
-                        <i class="fas fa-search"></i> Aller à
-                    </button>
-                    <button class="btn btn-success" onclick="addWaypoint()">
-                        <i class="fas fa-map-pin"></i> Ajouter Point
-                    </button>
-                    <button class="btn btn-info" onclick="drawPath()">
-                        <i class="fas fa-route"></i> Tracer Chemin
-                    </button>
-                    <button class="btn btn-warning" id="headingBtn" onclick="toggleHeadingMode()">
-                        <i class="fas fa-compass"></i> Mesurer Cap
-                    </button>
-                    <button class="btn btn-pink" id="measureBtn" onclick="toggleMeasureMode()">
-                        <i class="fas fa-ruler"></i> Mesurer Distance
-                    </button>
-                    <button class="btn btn-secondary" onclick="getCoordinates()">
-                        <i class="fas fa-crosshairs"></i> Coordonnées
-                    </button>
-                    <button class="btn btn-altitude" id="altitudeBtn" onclick="toggleAltitudeMode()">
-                        <i class="fas fa-mountain"></i> Altitude
-                    </button>
-                    <button class="btn btn-altitude" onclick="showElevationProfile()">
-                        <i class="fas fa-chart-area"></i> Profil Alti
-                    </button>
-                    <button class="btn btn-danger" onclick="clearMap()">
-                        <i class="fas fa-eraser"></i> Effacer
-                    </button>
-                </div>
+        <header class="brand">
+            <div class="brand-mark"><i class="fas fa-location-arrow"></i></div>
+            <div>
+                <div class="brand-name">Navigateur Cartographique</div>
+                <div class="brand-tagline">Waypoints, mesures et altimétrie</div>
             </div>
+            <button class="collapse-btn" title="Masquer le menu (M)" aria-label="Masquer le menu"
+                    aria-controls="sidebar" onclick="setSidebarCollapsed(true)">
+                <i class="fas fa-angles-left"></i>
+            </button>
+        </header>
 
-            <div class="info-panel">
-                <div class="info-section">
-                    <h3><i class="fas fa-info-circle"></i> Position Actuelle</h3>
-                    <div id="currentPosition">48.024376, -1.746483</div>
-                </div>
+        <div class="panel-scroll">
+            <section class="search">
+                <i class="fas fa-magnifying-glass search-icon"></i>
+                <input type="text" id="searchLocation" placeholder="Adresse ou lat, lon" autocomplete="off">
+                <button class="search-go" title="Aller à" onclick="goToLocation()">
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </section>
 
-                <div class="info-section">
-                    <h3><i class="fas fa-map-marker-alt"></i> Waypoints (<span id="waypointCount">0</span>)</h3>
-                    <div id="waypointList"></div>
-                </div>
+            <button class="btn btn-primary btn-block" onclick="addWaypoint()">
+                <i class="fas fa-plus"></i> Ajouter un point
+            </button>
 
-                <div class="info-section">
-                    <h3><i class="fas fa-terminal"></i> Journal</h3>
-                    <div class="log" id="logPanel"></div>
-                </div>
-
-                <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="exportData()">
-                        <i class="fas fa-download"></i> Exporter
+            <section class="section">
+                <div class="section-title">Outils</div>
+                <div class="tools">
+                    <button class="tool tool-indigo" onclick="drawPath()">
+                        <span class="tool-icon"><i class="fas fa-route"></i></span>
+                        <span class="tool-label">Itinéraire</span>
                     </button>
-                    <button class="btn btn-secondary" onclick="importData()">
-                        <i class="fas fa-upload"></i> Importer
+                    <button class="tool tool-amber" id="headingBtn" onclick="toggleHeadingMode()">
+                        <span class="tool-icon"><i class="fas fa-compass"></i></span>
+                        <span class="tool-label">Cap</span>
                     </button>
-                    <button class="btn btn-info" onclick="generateROS2Command()">
-                        <i class="fas fa-robot"></i> ROS2 Cmd
+                    <button class="tool tool-pink" id="measureBtn" onclick="toggleMeasureMode()">
+                        <span class="tool-icon"><i class="fas fa-ruler"></i></span>
+                        <span class="tool-label">Distance</span>
+                    </button>
+                    <button class="tool tool-emerald" id="altitudeBtn" onclick="toggleAltitudeMode()">
+                        <span class="tool-icon"><i class="fas fa-mountain"></i></span>
+                        <span class="tool-label">Altitude</span>
+                    </button>
+                    <button class="tool tool-teal" onclick="showElevationProfile()">
+                        <span class="tool-icon"><i class="fas fa-chart-area"></i></span>
+                        <span class="tool-label">Profil</span>
                     </button>
                 </div>
-            </div>
+            </section>
+
+            <section class="section">
+                <div class="section-title">
+                    Waypoints <span class="badge" id="waypointCount">0</span>
+                </div>
+                <div id="waypointList"></div>
+            </section>
+
+            <details class="section journal">
+                <summary class="section-title">
+                    Journal <i class="fas fa-chevron-down chevron"></i>
+                </summary>
+                <div class="log" id="logPanel"></div>
+            </details>
         </div>
 
-        <div id="map"></div>
+        <footer class="panel-footer">
+            <button class="btn btn-ghost" onclick="exportData()" title="Exporter les waypoints">
+                <i class="fas fa-download"></i> Exporter
+            </button>
+            <button class="btn btn-ghost" onclick="importData()" title="Importer des waypoints">
+                <i class="fas fa-upload"></i> Importer
+            </button>
+            <button class="btn btn-ghost btn-danger" onclick="clearMap()" title="Tout effacer">
+                <i class="fas fa-trash-can"></i>
+            </button>
+        </footer>
+        <div class="map-status">
+            <span class="mode-dot"></span>
+            <span class="mode-hint" id="modeHint"></span>
+            <span class="status-coords">
+                <i class="fas fa-crosshairs"></i>
+                <span id="currentPosition">48.024376, -1.746483</span>
+            </span>
+        </div>
+    </aside>
+
+    <button class="menu-toggle" id="menuToggle" title="Afficher le menu (M)" aria-label="Afficher le menu"
+            aria-controls="sidebar" onclick="setSidebarCollapsed(false)">
+        <span class="menu-toggle-mark"><i class="fas fa-location-arrow"></i></span>
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <div class="map-layers segmented">
+        <select id="mapType" hidden>
+            <option value="openstreetmap">OpenStreetMap</option>
+            <option value="ign">IGN TOP 25 (SCAN 25)</option>
+            <option value="marine">Carte marine (SHOM)</option>
+            <option value="satellite">Vue Satellite</option>
+        </select>
+        <button class="is-active" data-type="openstreetmap" title="OpenStreetMap" onclick="setMapType('openstreetmap')">
+            <i class="fas fa-map"></i><span class="seg-label">OSM</span>
+        </button>
+        <button data-type="ign" title="IGN TOP 25 (SCAN 25)" onclick="setMapType('ign')">
+            <i class="fas fa-map-location-dot"></i><span class="seg-label">IGN</span>
+        </button>
+        <button data-type="marine" title="Carte marine (SHOM)" onclick="setMapType('marine')">
+            <i class="fas fa-anchor"></i><span class="seg-label">Marine</span>
+        </button>
+        <button data-type="satellite" title="Satellite" onclick="setMapType('satellite')">
+            <i class="fas fa-satellite"></i><span class="seg-label">Satellite</span>
+        </button>
     </div>
 
     <!-- Modals -->
     <div id="waypointModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <div class="modal-title">Nouveau Waypoint</div>
+                <div class="modal-title">Nouveau waypoint</div>
                 <button class="close" onclick="closeModal('waypointModal')">&times;</button>
             </div>
             <div class="modal-body">
@@ -107,13 +152,13 @@
                     <input type="text" id="waypointName" placeholder="Nom du waypoint">
                 </div>
                 <div class="form-group">
-                    <label for="waypointCoords">Coordonnées (optionnel)</label>
-                    <input type="text" id="waypointCoords" placeholder="lat,lon ou laisser vide">
+                    <label for="waypointCoords">Coordonnées <span class="optional">optionnel</span></label>
+                    <input type="text" id="waypointCoords" placeholder="lat, lon ou laisser vide">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('waypointModal')">Annuler</button>
-                <button class="btn btn-success" onclick="confirmAddWaypoint()">Ajouter</button>
+                <button class="btn btn-ghost" onclick="closeModal('waypointModal')">Annuler</button>
+                <button class="btn btn-primary" onclick="confirmAddWaypoint()">Ajouter</button>
             </div>
         </div>
     </div>
@@ -129,7 +174,7 @@
                 <canvas id="profileChart" height="220"></canvas>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('profileModal')">Fermer</button>
+                <button class="btn btn-ghost" onclick="closeModal('profileModal')">Fermer</button>
             </div>
         </div>
     </div>

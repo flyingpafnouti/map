@@ -19,11 +19,10 @@ let measurePreviewLine = null;
 let measureVertexMarkers = [];
 
 function initMap() {
-    map = L.map('map').setView([currentLat, currentLon], 10);
+    map = L.map('map', { zoomControl: false }).setView([currentLat, currentLon], 10);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    createBasemap('openstreetmap').addTo(map);
 
     map.on('click', function(e) {
         if (measureMode) {
@@ -59,7 +58,7 @@ function initMap() {
                 const endLon = headingPoints[1][1];
 
                 headingLine = L.polyline([[startLat, startLon], [endLat, endLon]], {
-                    color: '#e83e8c', weight: 3, dashArray: '8, 6'
+                    color: '#f59e0b', weight: 3, dashArray: '8, 6'
                 }).addTo(map);
 
                 const mB = L.marker([endLat, endLon], {
@@ -110,23 +109,77 @@ function initMap() {
     log('💡 Glisser les marqueurs = déplacer les waypoints', 'info');
 }
 
+// crossOrigin: tiles are fetched in CORS mode so the service worker can cache
+// them for offline use (all three servers send Access-Control-Allow-Origin).
+// The IGN private WMTS is left as is: its CORS headers have not been checked.
+const BASEMAPS = {
+    openstreetmap: {
+        label: 'OpenStreetMap',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        options: { maxZoom: 19, crossOrigin: true, attribution: '© OpenStreetMap contributors' }
+    },
+    // IGN TOP 25 map (SCAN 25 Touristique, 1:25 000) at every zoom level.
+    // Only served by the Géoplateforme private WMTS, with the access key IGN
+    // provides for its SCAN map layers. Native tiles exist from zoom 6 to 16:
+    // the map cannot zoom out further, and Leaflet upscales tiles beyond 16.
+    ign: {
+        label: 'IGN TOP 25 (SCAN 25)',
+        url: 'https://data.geopf.fr/private/wmts?apikey=ign_scan_ws' +
+             '&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+             '&LAYER=GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR&STYLE=normal&TILEMATRIXSET=PM_6_16' +
+             '&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}',
+        options: { minZoom: 6, maxNativeZoom: 16, maxZoom: 19, attribution: '© IGN Géoplateforme' }
+    },
+    // "Carte littorale": SHOM nautical charts at sea merged with IGN maps on land,
+    // multi-scale from zoom 6 to 16, public Géoplateforme WMTS (no key). Covers
+    // metropolitan France and overseas territories. Not intended for navigation.
+    marine: {
+        label: 'Carte marine (SHOM)',
+        url: 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+             '&LAYER=GEOGRAPHICALGRIDSYSTEMS.COASTALMAPS&STYLE=normal&TILEMATRIXSET=PM_6_16' +
+             '&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}',
+        options: { minZoom: 6, maxNativeZoom: 16, maxZoom: 19, crossOrigin: true, attribution: '© SHOM, IGN Géoplateforme' }
+    },
+    satellite: {
+        label: 'Satellite',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        options: { maxZoom: 19, crossOrigin: true, attribution: 'Esri' }
+    }
+};
+
+function createBasemap(type) {
+    const basemap = BASEMAPS[type] || BASEMAPS.openstreetmap;
+    return L.tileLayer(basemap.url, basemap.options);
+}
+
 document.getElementById('mapType').addEventListener('change', function() {
     const mapType = this.value;
     map.eachLayer(function(layer) {
         if (layer instanceof L.TileLayer) map.removeLayer(layer);
     });
-    if (mapType === 'satellite') {
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Esri'
-        }).addTo(map);
-        log('Vue satellite activée', 'info');
-    } else {
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-        log('Vue OpenStreetMap activée', 'info');
-    }
+    createBasemap(mapType).addTo(map);
+    log(`Fond de carte : ${BASEMAPS[mapType].label}`, 'info');
+    document.querySelectorAll('.segmented [data-type]').forEach(b =>
+        b.classList.toggle('is-active', b.dataset.type === mapType));
 });
+
+function setMapType(type) {
+    const select = document.getElementById('mapType');
+    if (select.value === type) return;
+    select.value = type;
+    select.dispatchEvent(new Event('change'));
+}
+
+// Shows which map tool is active in the floating status bar.
+function updateModeHint() {
+    const hints = [];
+    if (headingMode) hints.push('Cap : cliquez deux points');
+    if (measureMode) hints.push('Distance : clic gauche pour ajouter, clic droit pour terminer');
+    if (altitudeMode) hints.push('Altitude : survolez la carte');
+    const el = document.getElementById('modeHint');
+    el.textContent = hints.join(' · ');
+    el.parentElement.classList.toggle('has-mode', hints.length > 0);
+}
 
 function goToLocation() {
     const input = document.getElementById('searchLocation').value.trim();
@@ -251,7 +304,7 @@ function drawPath() {
     pathArrows = [];
 
     const latlngs = waypoints.map(wp => [wp.lat, wp.lon]);
-    pathLine = L.polyline(latlngs, { color: 'red', weight: 4, opacity: 0.8 }).addTo(map);
+    pathLine = L.polyline(latlngs, { color: '#4f46e5', weight: 4, opacity: 0.85 }).addTo(map);
     addArrowsToPath(pathLine, latlngs);
 
     let totalDistance = 0;
@@ -263,20 +316,9 @@ function drawPath() {
     const coordinates = waypoints.map(wp => [wp.lon, wp.lat]);
     const coordinatesString = JSON.stringify(coordinates, null, 2);
 
-    const ros2Poses = waypoints.map(wp =>
-        `{pose: {position: {x: ${wp.lon.toFixed(5)}, y: ${wp.lat.toFixed(5)}, z: 0.0}}}`
-    ).join(',\n    ');
-    const ros2Command = `ros2 topic pub /path nav_msgs/msg/Path "{\n  header: {frame_id: 'map'},\n  poses: [\n    ${ros2Poses}\n  ]\n}" --once`;
-
     log(`Chemin tracé - Distance totale: ${(totalDistance / 1000).toFixed(2)} km`, 'success');
     log(`📍 Liste des coordonnées [lon, lat]:`, 'info');
     log(coordinatesString, 'info');
-    log(`🤖 Commande ROS2:`, 'info');
-    log(ros2Command, 'info');
-
-    navigator.clipboard.writeText(ros2Command)
-        .then(() => log('📋 Commande ROS2 copiée dans le presse-papier!', 'success'))
-        .catch(() => log('⚠️ Impossible de copier automatiquement', 'info'));
 }
 
 function addArrowsToPath(polyline, latlngs) {
@@ -291,7 +333,7 @@ function addArrowsToPath(polyline, latlngs) {
         const angle = Math.atan2(end.lng - start.lng, end.lat - start.lat) * 180 / Math.PI;
 
         const arrowIcon = L.divIcon({
-            html: `<div style="transform:rotate(${angle}deg);color:red;font-size:20px;text-align:center;line-height:20px;text-shadow:1px 1px 2px white,-1px -1px 2px white,-1px 1px 2px white,1px -1px 2px white">▲</div>`,
+            html: `<div style="transform:rotate(${angle}deg);color:#4f46e5;font-size:18px;text-align:center;line-height:20px;text-shadow:1px 1px 2px white,-1px -1px 2px white,-1px 1px 2px white,1px -1px 2px white">▲</div>`,
             iconSize: [20, 20], iconAnchor: [10, 10], className: 'arrow-icon'
         });
 
@@ -305,16 +347,15 @@ function toggleHeadingMode() {
     headingPoints = [];
     if (headingMode) {
         document.getElementById('headingBtn').classList.add('btn-active');
-        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap (Actif)';
         document.getElementById('map').classList.add('heading-mode');
         log('🧭 Mode mesure de cap activé - Clic gauche sur 2 points pour mesurer', 'success');
     } else {
         document.getElementById('headingBtn').classList.remove('btn-active');
-        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
         document.getElementById('map').classList.remove('heading-mode');
         clearHeadingElements();
         log('Mode mesure de cap désactivé', 'info');
     }
+    updateModeHint();
 }
 
 function clearHeadingElements() {
@@ -343,20 +384,19 @@ function toggleMeasureMode() {
     const btn = document.getElementById('measureBtn');
     if (measureMode) {
         btn.classList.add('btn-active');
-        btn.innerHTML = '<i class="fas fa-ruler"></i> Mesurer Distance (Actif)';
         document.getElementById('map').classList.add('measure-mode');
         map.doubleClickZoom.disable();
         map.on('mousemove', onMeasureMouseMove);
         log('📏 Mode Mesure activé - Clic gauche = ajouter un point, clic droit = terminer', 'success');
     } else {
         btn.classList.remove('btn-active');
-        btn.innerHTML = '<i class="fas fa-ruler"></i> Mesurer Distance';
         document.getElementById('map').classList.remove('measure-mode');
         map.doubleClickZoom.enable();
         map.off('mousemove', onMeasureMouseMove);
         clearMeasure();
         log('Mode Mesure désactivé', 'info');
     }
+    updateModeHint();
 }
 
 function formatDistance(m) {
@@ -394,7 +434,7 @@ function redrawMeasure() {
 
     if (measurePoints.length >= 2) {
         measureLine = L.polyline(measurePoints, {
-            color: '#e83e8c', weight: 3, opacity: 0.9
+            color: '#ec4899', weight: 3, opacity: 0.9
         }).addTo(map);
     }
 
@@ -426,7 +466,7 @@ function onMeasureMouseMove(e) {
     const last = measurePoints[measurePoints.length - 1];
     if (measurePreviewLine) { map.removeLayer(measurePreviewLine); measurePreviewLine = null; }
     measurePreviewLine = L.polyline([last, [e.latlng.lat, e.latlng.lng]], {
-        color: '#e83e8c', weight: 2, dashArray: '4, 6', opacity: 0.7
+        color: '#ec4899', weight: 2, dashArray: '4, 6', opacity: 0.7
     }).addTo(map);
 
     const segDist = L.latLng(last[0], last[1]).distanceTo(e.latlng);
@@ -475,33 +515,40 @@ function hideMeasureTooltip() {
     if (tip) tip.style.display = 'none';
 }
 
-function getCoordinates() {
-    const coords = `${currentLat.toFixed(6)},${currentLon.toFixed(6)}`;
-    navigator.clipboard.writeText(coords).then(() => {
-        alert(`Coordonnées copiées: ${coords}`);
-        log(`Coordonnées copiées: ${coords}`, 'info');
-    });
+// IGN Géoplateforme altimetry service. Returns one elevation (m) per point,
+// or null where the service has no data (it answers -99999 there).
+const IGN_ALTI_URL = 'https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json';
+const IGN_NO_DATA = -99999;
+
+function fetchElevations(points) {
+    const lons = points.map(p => p.lon.toFixed(6)).join('|');
+    const lats = points.map(p => p.lat.toFixed(6)).join('|');
+    const url = `${IGN_ALTI_URL}?lon=${lons}&lat=${lats}&resource=ign_rge_alti_wld&zonly=true`;
+    return fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error(`service altimétrique indisponible (HTTP ${response.status})`);
+            return response.json();
+        })
+        .then(data => {
+            if (!Array.isArray(data.elevations)) throw new Error('réponse inattendue du service altimétrique');
+            return data.elevations.map(z => (z <= IGN_NO_DATA ? null : Math.round(z * 10) / 10));
+        });
 }
 
 function getAltitude(lat, lon) {
-    const url = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`;
-    return fetch(url)
-        .then(response => response.json())
-        .then(data => data.results[0].elevation);
+    return fetchElevations([{ lat, lon }]).then(elevations => elevations[0]);
 }
 
 function toggleAltitudeMode() {
     altitudeMode = !altitudeMode;
     if (altitudeMode) {
         document.getElementById('altitudeBtn').classList.add('btn-active');
-        document.getElementById('altitudeBtn').innerHTML = '<i class="fas fa-mountain"></i> Altitude (Actif)';
         document.getElementById('map').classList.add('altitude-mode');
         map.on('mousemove', onAltitudeMouseMove);
         map.on('mouseout', hideAltitudeTooltip);
         log('⛰️ Mode Altitude activé - Déplacez le curseur sur la carte', 'success');
     } else {
         document.getElementById('altitudeBtn').classList.remove('btn-active');
-        document.getElementById('altitudeBtn').innerHTML = '<i class="fas fa-mountain"></i> Altitude';
         document.getElementById('map').classList.remove('altitude-mode');
         map.off('mousemove', onAltitudeMouseMove);
         map.off('mouseout', hideAltitudeTooltip);
@@ -509,6 +556,7 @@ function toggleAltitudeMode() {
         if (altitudeTimer) { clearTimeout(altitudeTimer); altitudeTimer = null; }
         log('Mode Altitude désactivé', 'info');
     }
+    updateModeHint();
 }
 
 function onAltitudeMouseMove(e) {
@@ -521,6 +569,10 @@ function onAltitudeMouseMove(e) {
         getAltitude(lat, lon)
             .then(elevation => {
                 if (!altitudeMode) return;
+                if (elevation === null) {
+                    showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><i>pas de donnée</i>`);
+                    return;
+                }
                 showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><b>⛰️ ${elevation} m</b>`);
                 log(`⛰️ Altitude: ${elevation} m (${lat.toFixed(6)}, ${lon.toFixed(6)})`, 'info');
             })
@@ -582,11 +634,12 @@ function showElevationProfile() {
 
     log(`⛰️ Calcul du profil altimétrique (${samples.length} points)...`, 'info');
 
-    const locations = samples.map(p => `${p.lat},${p.lon}`).join('|');
-    fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${locations}`)
-        .then(r => r.json())
-        .then(data => {
-            const elevations = data.results.map(r => r.elevation);
+    fetchElevations(samples)
+        .then(elevations => {
+            if (elevations.every(z => z === null)) {
+                log('⚠️ Aucune donnée d\'altitude sur ce parcours', 'error');
+                return;
+            }
             renderElevationProfile(samples, elevations, totalDist);
         })
         .catch(err => log(`Erreur profil altimétrique: ${err.message}`, 'error'));
@@ -596,17 +649,22 @@ let elevationChart = null;
 
 function renderElevationProfile(samples, elevations, totalDist) {
     let gain = 0, loss = 0;
+    // Missing values (null) are skipped: Chart.js draws them as gaps.
     for (let i = 1; i < elevations.length; i++) {
+        if (elevations[i] === null || elevations[i - 1] === null) continue;
         const d = elevations[i] - elevations[i - 1];
         if (d > 0) gain += d; else loss -= d;
     }
-    const minEle = Math.min(...elevations);
-    const maxEle = Math.max(...elevations);
+    const valid = elevations.filter(z => z !== null);
+    const minEle = Math.min(...valid);
+    const maxEle = Math.max(...valid);
 
+    const stat = (label, value) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`;
     document.getElementById('profileStats').innerHTML =
-        `Distance: <b>${(totalDist / 1000).toFixed(2)} km</b> &nbsp;|&nbsp; ` +
-        `D+: <b>${gain.toFixed(0)} m</b> &nbsp;|&nbsp; D-: <b>${loss.toFixed(0)} m</b> &nbsp;|&nbsp; ` +
-        `Alt min/max: <b>${minEle.toFixed(0)} / ${maxEle.toFixed(0)} m</b>`;
+        stat('Distance', `${(totalDist / 1000).toFixed(2)} km`) +
+        stat('Dénivelé +', `${gain.toFixed(0)} m`) +
+        stat('Dénivelé −', `${loss.toFixed(0)} m`) +
+        stat('Min / max', `${minEle.toFixed(0)} / ${maxEle.toFixed(0)} m`);
 
     showModal('profileModal');
 
@@ -620,10 +678,12 @@ function renderElevationProfile(samples, elevations, totalDist) {
             datasets: [{
                 label: 'Altitude (m)',
                 data: elevations,
-                borderColor: '#795548',
-                backgroundColor: 'rgba(121, 85, 72, 0.25)',
+                borderColor: '#4f46e5',
+                borderWidth: 2,
+                backgroundColor: 'rgba(79, 70, 229, 0.10)',
                 fill: true,
                 pointRadius: 0,
+                pointHoverRadius: 4,
                 tension: 0.3
             }]
         },
@@ -638,9 +698,19 @@ function renderElevationProfile(samples, elevations, totalDist) {
                     }
                 }
             },
+            interaction: { mode: 'index', intersect: false },
             scales: {
-                x: { title: { display: true, text: 'Distance (km)' }, ticks: { maxTicksLimit: 10 } },
-                y: { title: { display: true, text: 'Altitude (m)' } }
+                x: {
+                    title: { display: true, text: 'Distance (km)', color: '#64748b' },
+                    ticks: { maxTicksLimit: 10, color: '#94a3b8' },
+                    grid: { display: false }
+                },
+                y: {
+                    title: { display: true, text: 'Altitude (m)', color: '#64748b' },
+                    ticks: { color: '#94a3b8' },
+                    grid: { color: '#eef2f7' },
+                    border: { display: false }
+                }
             }
         }
     });
@@ -652,7 +722,6 @@ function clearMap() {
     if (headingMode) {
         headingMode = false;
         document.getElementById('headingBtn').classList.remove('btn-active');
-        document.getElementById('headingBtn').innerHTML = '<i class="fas fa-compass"></i> Mesurer Cap';
         document.getElementById('map').classList.remove('heading-mode');
     }
     if (altitudeMode) toggleAltitudeMode();
@@ -670,6 +739,7 @@ function clearMap() {
     layersToRemove.forEach(layer => map.removeLayer(layer));
     updateWaypointList();
     log('Carte entièrement effacée', 'info');
+    updateModeHint();
 }
 
 function exportData() {
@@ -718,22 +788,6 @@ function importData() {
     input.click();
 }
 
-function generateROS2Command() {
-    if (waypoints.length === 0) {
-        log('⚠️ Aucun waypoint défini. Ajoutez au moins un waypoint pour générer la commande ROS2.', 'info');
-        return;
-    }
-    const ros2Poses = waypoints.map(wp =>
-        `{pose: {position: {x: ${wp.lon.toFixed(5)}, y: ${wp.lat.toFixed(5)}, z: 0.0}}}`
-    ).join(',\n    ');
-    const ros2Command = `ros2 topic pub /path nav_msgs/msg/Path "{\n  header: {frame_id: 'map'},\n  poses: [\n    ${ros2Poses}\n  ]\n}" --once`;
-    log(`🤖 Commande ROS2 générée:`, 'success');
-    log(ros2Command, 'info');
-    navigator.clipboard.writeText(ros2Command)
-        .then(() => log('📋 Commande ROS2 copiée dans le presse-papier!', 'success'))
-        .catch(() => log('⚠️ Impossible de copier automatiquement', 'info'));
-}
-
 function deleteWaypoint(index) {
     if (markers[index]) { map.removeLayer(markers[index]); markers.splice(index, 1); }
     const deletedName = waypoints[index].name;
@@ -747,22 +801,30 @@ function updateCurrentPosition() {
     document.getElementById('currentPosition').textContent = `${currentLat.toFixed(6)}, ${currentLon.toFixed(6)}`;
 }
 
+// Touch-only devices (phones, tablets): no hover, no right click.
+const IS_TOUCH = window.matchMedia('(hover: none)').matches;
+
 function updateWaypointList() {
     const list = document.getElementById('waypointList');
     const count = document.getElementById('waypointCount');
     count.textContent = waypoints.length;
     if (waypoints.length === 0) {
-        list.innerHTML = '<div style="color:#6c757d;font-style:italic;">Aucun waypoint</div>';
+        list.innerHTML = `
+            <div class="waypoint-empty">
+                <i class="fas fa-location-dot"></i>
+                <span>Aucun point pour l'instant.<br>${IS_TOUCH ? 'Appui long' : 'Clic droit'} sur la carte pour en ajouter.</span>
+            </div>`;
         return;
     }
     list.innerHTML = waypoints.map((wp, index) => `
         <div class="waypoint-item">
+            <div class="waypoint-index">${index + 1}</div>
             <div class="waypoint-info">
                 <div class="waypoint-name">${wp.name}</div>
                 <div class="waypoint-coords">${wp.lat.toFixed(6)}, ${wp.lon.toFixed(6)}</div>
             </div>
             <div class="waypoint-actions">
-                <button class="btn btn-danger btn-sm" onclick="deleteWaypoint(${index})">
+                <button class="icon-btn" title="Supprimer" onclick="deleteWaypoint(${index})">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -796,7 +858,7 @@ function initResizeHandle() {
 
     document.addEventListener('mousemove', function(e) {
         if (!isResizing) return;
-        const newWidth = e.clientX;
+        const newWidth = e.clientX - sidebar.getBoundingClientRect().left;
         const minWidth = parseInt(getComputedStyle(sidebar).minWidth);
         const maxWidth = parseInt(getComputedStyle(sidebar).maxWidth);
         if (newWidth >= minWidth && newWidth <= maxWidth) sidebar.style.width = newWidth + 'px';
@@ -814,9 +876,41 @@ function initResizeHandle() {
     resizeHandle.addEventListener('selectstart', function(e) { e.preventDefault(); });
 }
 
+// Side panel visibility. The choice is remembered per browser; storage may be
+// unavailable (private mode, blocked site data), so every access is guarded.
+const SIDEBAR_STORAGE_KEY = 'sidebarCollapsed';
+
+function setSidebarCollapsed(collapsed) {
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    document.getElementById('sidebar').inert = collapsed;
+    document.getElementById('menuToggle').hidden = !collapsed;
+    try { localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0'); } catch (e) {}
+}
+
+function initSidebarToggle() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1'; } catch (e) {}
+    // Restore without animating the panel out on page load.
+    document.body.classList.add('no-transition');
+    setSidebarCollapsed(collapsed);
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+        document.body.classList.remove('no-transition')));
+
+    // "M" toggles the panel, unless the user is typing in a field.
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'm' && e.key !== 'M') return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const t = e.target;
+        if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
+        setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initMap();
     initResizeHandle();
+    initSidebarToggle();
+    updateWaypointList();
     log('🚀 Application chargée - Prêt à naviguer !', 'success');
     log('📋 Instructions rapides:', 'info');
     log('  • Clic gauche sur carte = changer position', 'info');
@@ -837,3 +931,13 @@ window.addEventListener('click', function(e) {
         if (e.target === modal) modal.style.display = 'none';
     });
 });
+
+// --- Progressive Web App -------------------------------------------------
+
+// Service workers need a secure context: HTTPS, or http://localhost.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+            .catch(err => log(`Mode hors ligne indisponible : ${err.message}`, 'error'));
+    });
+}
