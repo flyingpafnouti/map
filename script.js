@@ -19,7 +19,12 @@ let measurePreviewLine = null;
 let measureVertexMarkers = [];
 
 function initMap() {
-    map = L.map('map', { zoomControl: false }).setView([currentLat, currentLon], 10);
+    // rotate: map rotation from leaflet-rotate, driven by geoloc.js only (no
+    // rotation gesture nor default compass control).
+    map = L.map('map', {
+        zoomControl: false,
+        rotate: true, rotateControl: false, touchRotate: false, shiftKeyRotate: false
+    }).setView([currentLat, currentLon], 10);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     createBasemap('openstreetmap').addTo(map);

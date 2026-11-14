@@ -794,6 +794,78 @@ body.no-transition .menu-toggle { animation: none; }
     color: var(--text-3);
 }
 
+/* GPS controls, above the zoom buttons (touch devices only). */
+.leaflet-bottomright .geo-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-right: calc(var(--gap) + var(--safe-right));
+    margin-bottom: 8px;
+}
+
+.geo-btn {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    color: var(--text-2);
+    background: var(--surface-glass);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+}
+
+.geo-btn[hidden] { display: none; }
+.geo-btn i { font-size: 15px; }
+.geo-btn.is-active { color: var(--accent); }
+.geo-btn.is-searching i { animation: blink 1.2s ease-in-out infinite; }
+
+/* North needle: red half points north, rotated with the map. */
+.north-needle {
+    width: 6px;
+    height: 20px;
+    background: linear-gradient(to bottom, var(--danger) 50%, var(--text-3) 50%);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+/* Position marker: a dot and a small heading arrow around it. */
+.geo-marker { pointer-events: none; }
+
+.geo-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin: -7px 0 0 -7px;
+    background: var(--accent);
+    border: 2.5px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
+
+.geo-arrow {
+    position: absolute;
+    inset: 0;
+}
+
+.geo-arrow[hidden] { display: none; }
+
+.geo-arrow::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    margin-left: -5px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 7px solid var(--accent);
+    filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+
 /* Map overlays */
 
 .measure-label {

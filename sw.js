@@ -25,6 +25,7 @@ const SHELL = [
     './style.css',
     './script.js',
     './offline.js',
+    './geoloc.js',
     './manifest.webmanifest',
     './icons/icon-192.png',
     './icons/icon-512.png',
@@ -34,6 +35,7 @@ const SHELL = [
 const CDN = [
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+    'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
     'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
 ];
