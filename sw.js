@@ -1,7 +1,8 @@
 // Service worker: makes the app installable and usable offline.
 //
-// - App shell (HTML, CSS, JS, icons): network first, cache as fallback, so a
-//   new version is picked up as soon as the device is online.
+// - App shell (HTML, CSS, JS, icons): network first, revalidated past the
+//   HTTP cache, cache as fallback, so a new version is picked up as soon as
+//   the device is online.
 // - Libraries and fonts from CDNs: cache first (URLs are versioned).
 // - Map tiles: cache first, keeping the most recent TILE_LIMIT tiles, so areas
 //   already viewed stay available without network. Only CORS responses are
@@ -102,7 +103,9 @@ self.addEventListener('fetch', event => {
 async function networkFirst(request) {
     const cache = await caches.open(SHELL_CACHE);
     try {
-        const response = await fetch(request);
+        // no-cache: GitHub Pages lets the HTTP cache keep files 10 minutes,
+        // which would hold back a new version; revalidating costs a 304.
+        const response = await fetch(request, { cache: 'no-cache' });
         if (response.ok) cache.put(request, response.clone());
         return response;
     } catch (err) {
