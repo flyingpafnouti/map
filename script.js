@@ -941,3 +941,29 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
             .catch(err => log(`Mode hors ligne indisponible : ${err.message}`, 'error'));
     });
 }
+
+// Install button (Chrome on Android). Chrome fires beforeinstallprompt only
+// when the app is installable and not installed yet; the event is kept to
+// show the install dialog from our own button instead of Chrome's banner.
+let installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    installPrompt = e;
+    document.getElementById('installBtn').hidden = false;
+});
+
+window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    document.getElementById('installBtn').hidden = true;
+    log('Application installée', 'success');
+});
+
+async function installApp() {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    // A prompt can be shown only once: Chrome fires a new event if needed.
+    installPrompt = null;
+    document.getElementById('installBtn').hidden = true;
+}
