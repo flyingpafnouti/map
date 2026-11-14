@@ -38,8 +38,6 @@ let geoReadings = 0;
 let geoHeadingUp = false;
 let geoRenderPending = false;
 
-const geoOrientationEvent = 'ondeviceorientationabsolute' in window
-    ? 'deviceorientationabsolute' : 'deviceorientation';
 const DEG = Math.PI / 180;
 
 const GeoControl = L.Control.extend({
@@ -191,23 +189,35 @@ function onPositionError(err) {
 
 // --- Compass -------------------------------------------------------------
 
-// Two compass sources are started together and the first one to deliver a
-// heading wins, the other is stopped:
+// Three compass sources are started together and the first one to deliver a
+// heading wins, the others are stopped:
 // - AbsoluteOrientationSensor (Chrome on Android), read at 60 Hz in the
 //   screen frame, so landscape is handled;
-// - the deviceorientationabsolute event (deviceorientation elsewhere).
-// Either one may stay silent on a given phone (sensor refused, event fired
-// with null values only), so waiting on one of them could leave the arrow
-// hidden.
+// - the deviceorientationabsolute event (Chrome);
+// - the deviceorientation event, when it is absolute (Firefox) or carries
+//   webkitCompassHeading (Safari); in Chrome it is relative, hence ignored.
+// Any of them may stay silent on a given phone, so each is counted in
+// geoDiag: when none answers, the log says why.
+const GEO_EVENTS = ['deviceorientationabsolute', 'deviceorientation'];
+
+function newCompassDiag() {
+    return {
+        sensor: 'AbsoluteOrientationSensor' in window ? 'démarré, aucune mesure' : 'absent du navigateur',
+        deviceorientationabsolute: { received: 0, usable: 0 },
+        deviceorientation: { received: 0, usable: 0 }
+    };
+}
+
+let geoDiag = newCompassDiag();
+
 function startCompass() {
     geoCompassSource = null;
     geoReadings = 0;
     geoCompassStart = Date.now();
+    geoDiag = newCompassDiag();
     clearTimeout(geoCompassTimer);
     geoCompassTimer = setTimeout(() => {
-        if (geoWatchId !== null && !geoCompassSource) {
-            log('⚠️ Pas de boussole : la flèche suivra le cap GPS en marchant', 'error');
-        }
+        if (geoWatchId !== null && !geoCompassSource) logCompassDiagnostic();
     }, GEO_COMPASS_TIMEOUT);
 
     if ('AbsoluteOrientationSensor' in window) {
@@ -218,47 +228,72 @@ function startCompass() {
             geoSensor.start();
         } catch (e) {
             geoSensor = null;
+            geoDiag.sensor = `refusé (${e.name})`;
         }
     }
-    window.addEventListener(geoOrientationEvent, onOrientation);
+    GEO_EVENTS.forEach(type => window.addEventListener(type, onOrientation));
 }
 
 function onSensorError(e) {
     if (geoSensor) { geoSensor.stop(); geoSensor = null; }
-    // The sensor had won the race: fall back on the event.
+    const name = e.error ? e.error.name : 'erreur';
+    geoDiag.sensor = `erreur ${name}`;
+    // The sensor had won the race: listen to the events again.
     if (geoCompassSource === 'sensor') {
         geoCompassSource = null;
-        if (geoWatchId !== null) window.addEventListener(geoOrientationEvent, onOrientation);
+        if (geoWatchId !== null) GEO_EVENTS.forEach(type => window.addEventListener(type, onOrientation));
     }
-    log(`Capteur d'orientation indisponible (${e.error ? e.error.name : 'erreur'})`, 'info');
+    log(`Capteur d'orientation indisponible (${name})`, 'info');
 }
 
 function stopCompass() {
     if (geoSensor) { geoSensor.stop(); geoSensor = null; }
-    window.removeEventListener(geoOrientationEvent, onOrientation);
+    GEO_EVENTS.forEach(type => window.removeEventListener(type, onOrientation));
     clearTimeout(geoCompassTimer);
     geoCompassSource = null;
 }
 
-// Returns false when the reading comes from the source that lost the race.
+// Returns false when the reading comes from a source that lost the race.
 function claimCompass(source) {
     if (geoWatchId === null) return false;
     if (geoCompassSource === source) return true;
     if (geoCompassSource) return false;
     geoCompassSource = source;
-    if (source === 'sensor') {
-        window.removeEventListener(geoOrientationEvent, onOrientation);
-    } else if (geoSensor) {
-        geoSensor.stop();
-        geoSensor = null;
-    }
-    const name = source === 'sensor' ? 'capteur d\'orientation' : `événement ${geoOrientationEvent}`;
+    GEO_EVENTS.filter(type => type !== source)
+        .forEach(type => window.removeEventListener(type, onOrientation));
+    if (source !== 'sensor' && geoSensor) { geoSensor.stop(); geoSensor = null; }
+
+    const name = source === 'sensor' ? 'capteur d\'orientation' : `événement ${source}`;
     log(`🧭 Boussole : ${name}, première mesure après ${Date.now() - geoCompassStart} ms`, 'success');
     const counted = geoReadings;
     setTimeout(() => {
         if (geoCompassSource === source) log(`🧭 Boussole : ${Math.round((geoReadings - counted) / 2)} mesures/s`, 'info');
     }, 2000);
     return true;
+}
+
+async function permissionState(name) {
+    try { return (await navigator.permissions.query({ name })).state; } catch (e) { return 'inconnu'; }
+}
+
+function browserName() {
+    const brands = navigator.userAgentData?.brands?.filter(b => !/not.?a.?brand/i.test(b.brand));
+    if (brands?.length) return brands.map(b => `${b.brand} ${b.version}`).join(', ');
+    const m = navigator.userAgent.match(/(SamsungBrowser|Firefox|EdgA|OPR|Chrome)\/[\d.]+/);
+    return m ? m[0] : navigator.userAgent;
+}
+
+// Logged when no source answered: what each one did, the sensor permissions
+// (Chrome: site settings > motion sensors) and the browser.
+async function logCompassDiagnostic() {
+    const perms = await Promise.all(['accelerometer', 'gyroscope', 'magnetometer'].map(permissionState));
+    const ev = type => `${geoDiag[type].received} reçus dont ${geoDiag[type].usable} exploitables`;
+    log('⚠️ Pas de boussole : la flèche suivra le cap GPS en marchant', 'error');
+    log(`Diagnostic boussole · capteur : ${geoDiag.sensor}` +
+        ` · deviceorientationabsolute : ${'ondeviceorientationabsolute' in window ? ev('deviceorientationabsolute') : 'non pris en charge'}` +
+        ` · deviceorientation : ${ev('deviceorientation')}` +
+        ` · permissions accéléromètre/gyroscope/magnétomètre : ${perms.join('/')}` +
+        ` · navigateur : ${browserName()}`, 'info');
 }
 
 // Heading of the direction the phone points, from the world coordinates
@@ -274,7 +309,9 @@ function headingFromAxes(u, n) {
 }
 
 function onSensorReading() {
-    if (!geoSensor || !geoSensor.quaternion || !claimCompass('sensor')) return;
+    if (!geoSensor || !geoSensor.quaternion) return;
+    if (geoCompassSource === null) geoDiag.sensor = 'actif';
+    if (!claimCompass('sensor')) return;
     const [x, y, z, w] = geoSensor.quaternion;
     // Columns 2 and 3 of the rotation matrix: screen y axis and normal.
     const u = [2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)];
@@ -293,12 +330,16 @@ function screenAngle() {
 // up axis is the phone's y axis turned by the screen angle in landscape.
 // Safari gives webkitCompassHeading directly.
 function onOrientation(e) {
+    const diag = geoDiag[e.type];
+    if (diag) diag.received++;
     if (typeof e.webkitCompassHeading === 'number') {
-        if (claimCompass('event')) onCompassHeading(e.webkitCompassHeading + screenAngle());
+        if (diag) diag.usable++;
+        if (claimCompass(e.type)) onCompassHeading(e.webkitCompassHeading + screenAngle());
         return;
     }
     if (!e.absolute || e.alpha === null || e.beta === null || e.gamma === null) return;
-    if (!claimCompass('event')) return;
+    if (diag) diag.usable++;
+    if (!claimCompass(e.type)) return;
     const [sA, cA] = [Math.sin(e.alpha * DEG), Math.cos(e.alpha * DEG)];
     const [sB, cB] = [Math.sin(e.beta * DEG), Math.cos(e.beta * DEG)];
     const [sG, cG] = [Math.sin(e.gamma * DEG), Math.cos(e.gamma * DEG)];
