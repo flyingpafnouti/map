@@ -4,7 +4,8 @@
 //   tracking, a tap re-centres the map, or stops tracking if already centred.
 // - Position: a dot with a light accuracy circle; a small arrow shows where
 //   the top of the phone points (compass heading).
-// - Heading-up button: rotates the map so the phone direction is up.
+// - Orient button: rotates the map once so the phone direction is up; the
+//   map then stays put until the next tap (no continuous following).
 // - North button, shown while the map is rotated: realigns north up.
 //
 // Map rotation comes from leaflet-rotate: map.setBearing(b) turns the map
@@ -18,7 +19,7 @@ const GEO_MIN_CUTOFF = 1.5;       // Hz, cutoff when still
 const GEO_SPEED_GAIN = 0.15;      // Hz added per deg/s of turning speed
 const GEO_SPEED_CUTOFF = 5;       // Hz, cutoff of the turning speed estimate
 const GEO_SENSOR_HZ = 60;
-const GEO_BEARING_STEP = 1;       // degrees of change before rotating the map
+const GEO_ROTATE_MS = 300;        // duration of the map rotation animation
 const GEO_CENTRED_PX = 40;        // map counts as centred within this distance
 const GEO_COMPASS_TIMEOUT = 3000; // ms without compass before using GPS course
 
@@ -35,7 +36,7 @@ let geoCompassSource = null;      // 'sensor' or 'event', once one has answered
 let geoCompassStart = 0;
 let geoCompassTimer = null;
 let geoReadings = 0;
-let geoHeadingUp = false;
+let geoRotateAnim = null;         // requestAnimationFrame id of the rotation
 let geoRenderPending = false;
 
 const DEG = Math.PI / 180;
@@ -57,7 +58,7 @@ const GeoControl = L.Control.extend({
             </button>`;
         L.DomEvent.disableClickPropagation(box);
         box.querySelector('#locateBtn').onclick = onLocateClick;
-        box.querySelector('#headingUpBtn').onclick = () => setHeadingUp(!geoHeadingUp);
+        box.querySelector('#headingUpBtn').onclick = orientMapToHeading;
         box.querySelector('#northBtn').onclick = resetNorth;
         return box;
     }
@@ -73,15 +74,26 @@ function onLocateClick() {
     else stopTracking();
 }
 
-function setHeadingUp(on) {
-    geoHeadingUp = on && geoHeading !== null;
-    document.getElementById('headingUpBtn').classList.toggle('is-active', geoHeadingUp);
-    if (geoHeadingUp) map.setBearing(-geoHeading);
+function orientMapToHeading() {
+    if (geoHeading !== null) animateBearing(-geoHeading);
 }
 
 function resetNorth() {
-    setHeadingUp(false);
-    map.setBearing(0);
+    animateBearing(0);
+}
+
+// Rotates the map to `target` degrees along the shortest way, easing out.
+function animateBearing(target) {
+    cancelAnimationFrame(geoRotateAnim);
+    const start = map.getBearing();
+    const delta = wrap180(target - start);
+    const t0 = performance.now();
+    const step = now => {
+        const t = Math.min(1, (now - t0) / GEO_ROTATE_MS);
+        map.setBearing(start + delta * (1 - (1 - t) ** 3));
+        if (t < 1) geoRotateAnim = requestAnimationFrame(step);
+    };
+    geoRotateAnim = requestAnimationFrame(step);
 }
 
 function updateGeoButtons() {
@@ -132,7 +144,6 @@ function stopTracking() {
     geoHeading = null;
     if (geoMarker) { map.removeLayer(geoMarker); geoMarker = null; }
     if (geoAccuracy) { map.removeLayer(geoAccuracy); geoAccuracy = null; }
-    setHeadingUp(false);
     updateGeoButtons();
     log('Suivi GPS arrêté', 'info');
 }
@@ -382,19 +393,11 @@ function setHeading(raw, now, direct) {
         geoRenderPending = true;
         requestAnimationFrame(() => {
             geoRenderPending = false;
-            if (geoHeading === null) return;
-            if (geoHeadingUp) rotateMapToHeading();
-            renderHeading();
+            if (geoHeading !== null) renderHeading();
         });
     }
 }
 setHeading.last = 0;
-
-function rotateMapToHeading() {
-    const target = -geoHeading;
-    const delta = ((target - map.getBearing()) % 360 + 540) % 360 - 180;
-    if (Math.abs(delta) >= GEO_BEARING_STEP) map.setBearing(target);
-}
 
 function renderHeading() {
     const arrow = geoMarker && geoMarker.getElement()?.querySelector('.geo-arrow');
