@@ -6,6 +6,9 @@
 // - Map tiles: cache first, keeping the most recent TILE_LIMIT tiles, so areas
 //   already viewed stay available without network. Only CORS responses are
 //   stored: opaque ones would count several MB each against the quota.
+// - IGN SCAN 25 tiles (private WMTS): looked up in every cache, which includes
+//   the areas saved for offline use (caches named ign-pack-*, see offline.js),
+//   then the network. They are not cached on the fly.
 // - Elevation API and anything else: straight to the network.
 
 const VERSION = 'v1';
@@ -14,12 +17,14 @@ const STATIC_CACHE = `static-${VERSION}`;
 const TILE_CACHE = 'tiles-v1';
 const TILE_LIMIT = 3000;
 const TRIM_EVERY = 50;
+const OFFLINE_PREFIX = 'ign-pack-';
 
 const SHELL = [
     './',
     './index.html',
     './style.css',
     './script.js',
+    './offline.js',
     './manifest.webmanifest',
     './icons/icon-192.png',
     './icons/icon-512.png',
@@ -49,6 +54,10 @@ function isTile(url) {
     return url.hostname === 'data.geopf.fr' && url.pathname === '/wmts';
 }
 
+function isOfflineTile(url) {
+    return url.hostname === 'data.geopf.fr' && url.pathname === '/private/wmts';
+}
+
 self.addEventListener('install', event => {
     event.waitUntil((async () => {
         const shell = await caches.open(SHELL_CACHE);
@@ -64,7 +73,9 @@ self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         const keep = [SHELL_CACHE, STATIC_CACHE, TILE_CACHE];
         const names = await caches.keys();
-        await Promise.all(names.filter(n => !keep.includes(n)).map(n => caches.delete(n)));
+        // Offline areas belong to the user: never drop them on update.
+        const stale = names.filter(n => !keep.includes(n) && !n.startsWith(OFFLINE_PREFIX));
+        await Promise.all(stale.map(n => caches.delete(n)));
         await self.clients.claim();
     })());
 });
@@ -78,10 +89,12 @@ self.addEventListener('fetch', event => {
         event.respondWith(networkFirst(request));
     } else if (isTile(url)) {
         event.respondWith(cacheFirst(request, TILE_CACHE, true));
+    } else if (isOfflineTile(url)) {
+        event.respondWith(offlineFirst(request));
     } else if (STATIC_HOSTS.includes(url.hostname)) {
         event.respondWith(cacheFirst(request, STATIC_CACHE, false));
     }
-    // Everything else (elevation API, IGN private WMTS...) goes to the network.
+    // Everything else (elevation API...) goes to the network.
 });
 
 async function networkFirst(request) {
@@ -99,6 +112,11 @@ async function networkFirst(request) {
         }
         throw err;
     }
+}
+
+async function offlineFirst(request) {
+    const cached = await caches.match(request, { ignoreVary: true });
+    return cached || fetch(request);
 }
 
 let tilePuts = 0;

@@ -139,6 +139,11 @@
         </button>
     </div>
 
+    <button class="map-fab" id="offlineBtn" hidden title="Cartes hors ligne" aria-label="Cartes hors ligne"
+            onclick="openOfflineModal()">
+        <i class="fas fa-cloud-arrow-down"></i>
+    </button>
+
     <!-- Modals -->
     <div id="waypointModal" class="modal">
         <div class="modal-content">
@@ -179,8 +184,49 @@
         </div>
     </div>
 
+    <div id="offlineModal" class="modal">
+        <div class="modal-content modal-scroll">
+            <div class="modal-header">
+                <div class="modal-title">Cartes IGN hors ligne</div>
+                <button class="close" onclick="closeModal('offlineModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="section-title">Zone affichée</div>
+                <div id="offlineEstimate" class="profile-stats offline-stats"></div>
+                <p id="offlineWarning" class="offline-warning" hidden></p>
+                <div class="form-group">
+                    <label for="offlineName">Nom</label>
+                    <input type="text" id="offlineName" autocomplete="off">
+                </div>
+                <div id="offlineProgress" class="offline-progress" hidden>
+                    <div class="progress-track"><span id="offlineProgressBar"></span></div>
+                    <div id="offlineProgressText" class="offline-progress-text"></div>
+                </div>
+                <button class="btn btn-primary btn-block" id="offlineStart" onclick="startOfflineDownload()">
+                    <i class="fas fa-cloud-arrow-down"></i> Télécharger la zone
+                </button>
+                <button class="btn btn-ghost btn-block" id="offlineCancel" hidden onclick="cancelOfflineDownload()">
+                    <i class="fas fa-xmark"></i> Annuler le téléchargement
+                </button>
+
+                <div class="section-title offline-list-title">
+                    Cartes enregistrées <span class="badge" id="offlineCount">0</span>
+                </div>
+                <div id="offlineList"></div>
+                <div id="offlineStorage" class="offline-storage"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost btn-danger" id="offlineClearAll" onclick="clearOfflinePacks()">
+                    <i class="fas fa-trash-can"></i> Tout vider
+                </button>
+                <button class="btn btn-ghost" onclick="closeModal('offlineModal')">Fermer</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="script.js"></script>
+    <script src="offline.js"></script>
 </body>
 </html>
