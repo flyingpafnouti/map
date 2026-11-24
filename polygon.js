@@ -43,6 +43,7 @@ let polygonPreview = null;
 let polygonVertices = [];
 let polygonMaxMarker = null;
 let polygonRequest = null;   // AbortController of the computation in flight
+let polygonLastPts = null;   // vertices of the closed polygon, for the 3D view
 
 function togglePolygonMode() {
     polygonMode = !polygonMode;
@@ -124,7 +125,8 @@ function finishPolygon() {
     polygonFinished = true;
     if (polygonPreview) { map.removeLayer(polygonPreview); polygonPreview = null; }
     redrawPolygon();
-    computePolygonStats(polygonPoints.map(p => ({ lat: p.lat, lon: p.lng })));
+    polygonLastPts = polygonPoints.map(p => ({ lat: p.lat, lon: p.lng }));
+    computePolygonStats(polygonLastPts);
 }
 
 function clearPolygon() {
@@ -136,6 +138,7 @@ function clearPolygon() {
     polygonVertices = [];
     polygonPoints = [];
     polygonFinished = false;
+    polygonLastPts = null;
 }
 
 // Area on a local tangent plane (shoelace formula); accurate for zones of a
@@ -393,7 +396,26 @@ function showPolygonMessage(text, isError, open = true) {
     p.className = isError ? 'polygon-message polygon-error' : 'polygon-message';
     p.textContent = text;
     document.getElementById('polygonNotes').replaceChildren(p);
+    document.getElementById('polygon3dBtn').hidden = true;
     if (open) showModal('polygonModal');
+}
+
+// 3D view (polygon3d.js), loaded on first use: three.js weighs ~750 kB.
+function openPolygon3DView() {
+    if (!polygonLastPts) return;
+    const pts = polygonLastPts;
+    closeModal('polygonModal');
+    import('./polygon3d.js')
+        .then(module => {
+            window.polygon3d = module;
+            module.openPolygon3D(pts);
+        })
+        .catch(err => log(`Erreur vue 3D: ${err.message}`, 'error'));
+}
+
+// Calls from the controls of the 3D window, once the module is loaded.
+function polygon3dCall(name, ...args) {
+    if (window.polygon3d) window.polygon3d[name](...args);
 }
 
 function showPolygonStats(stats, area, step) {
@@ -438,6 +460,7 @@ function showPolygonStats(stats, area, step) {
         radius: 6, color: '#fff', weight: 2, fillColor: POLY_COLOR, fillOpacity: 1, interactive: false
     }).addTo(map) : null;
 
+    document.getElementById('polygon3dBtn').hidden = false;
     showModal('polygonModal'); // first, so the chart can measure its width
     renderPolygonChart(document.getElementById('polygonChart'), stats);
     log(`⬠ MNT ${m(stats.mntMin, hasT)} à ${m(stats.mntMax, hasT)} · MNS ${m(stats.mnsMin, hasS)} à ${m(stats.mnsMax, hasS)} · sursol max ${m(stats.heightMax, hasH)} · ${areaStr}`, 'success');

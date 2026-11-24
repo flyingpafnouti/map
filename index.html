@@ -18,6 +18,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="style.css" />
+    <!-- three.js for the 3D view of the polygon tool, loaded on demand -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/+esm",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body>
     <div id="map"></div>
@@ -204,7 +213,44 @@
                 <div id="polygonNotes" class="polygon-notes"></div>
             </div>
             <div class="modal-footer">
+                <button class="btn btn-primary" id="polygon3dBtn" hidden onclick="openPolygon3DView()">
+                    <i class="fas fa-cube"></i> Vue 3D
+                </button>
                 <button class="btn btn-ghost" onclick="closeModal('polygonModal')">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="polygon3dModal" class="modal">
+        <div class="modal-content modal-3d">
+            <div class="modal-header">
+                <div class="modal-title">Vue 3D du polygone</div>
+                <button class="close" onclick="closeModal('polygon3dModal')">&times;</button>
+            </div>
+            <div class="view3d-toolbar">
+                <div class="view3d-models">
+                    <button class="active" data-model="mns" onclick="polygon3dCall('setPolygon3DModel', 'mns')">Surface (MNS)</button>
+                    <button data-model="mnt" onclick="polygon3dCall('setPolygon3DModel', 'mnt')">Sol (MNT)</button>
+                </div>
+                <label class="view3d-exag">
+                    Exagération
+                    <input type="range" id="polygon3dExag" min="1" max="5" step="0.5" value="1"
+                           oninput="polygon3dCall('setPolygon3DExaggeration', this.value)">
+                    <span id="polygon3dExagValue">×1,0</span>
+                </label>
+                <button class="btn btn-ghost" onclick="polygon3dCall('resetPolygon3DView')">
+                    <i class="fas fa-crosshairs"></i> Recentrer
+                </button>
+            </div>
+            <div id="polygon3dCanvas" class="view3d-canvas">
+                <div id="polygon3dStatus" class="view3d-status"></div>
+            </div>
+            <p id="polygon3dInfo" class="view3d-info"></p>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('polygon3dModal'); showModal('polygonModal')">
+                    Retour aux résultats
+                </button>
+                <button class="btn btn-ghost" onclick="closeModal('polygon3dModal')">Fermer</button>
             </div>
         </div>
     </div>

@@ -1323,3 +1323,81 @@ body.no-transition .menu-toggle { animation: none; }
 
     .profile-stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* 3D view of the polygon tool */
+
+.modal-3d { width: 1100px; }
+
+.view3d-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 12px;
+}
+
+.view3d-models {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+}
+
+.view3d-models button {
+    padding: 6px 12px;
+    font: 600 12px var(--font);
+    color: var(--text-2);
+    background: none;
+    border: 0;
+    border-radius: calc(var(--radius-sm) - 2px);
+    cursor: pointer;
+}
+
+.view3d-models button.active {
+    color: var(--text);
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.view3d-exag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+}
+
+.view3d-exag span { min-width: 30px; font-variant-numeric: tabular-nums; }
+
+.view3d-canvas {
+    position: relative;
+    height: min(60vh, 620px);
+    overflow: hidden;
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    touch-action: none;
+}
+
+.view3d-canvas canvas { display: block; }
+
+.view3d-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    font-size: 14px;
+    color: var(--text-2);
+    text-align: center;
+}
+
+.view3d-status[hidden] { display: none; }
+
+.view3d-info {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-3);
+}
