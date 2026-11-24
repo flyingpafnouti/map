@@ -73,6 +73,10 @@
                         <span class="tool-icon"><i class="fas fa-chart-area"></i></span>
                         <span class="tool-label">Profil</span>
                     </button>
+                    <button class="tool tool-violet" id="polygonBtn" onclick="togglePolygonMode()">
+                        <span class="tool-icon"><i class="fas fa-draw-polygon"></i></span>
+                        <span class="tool-label">Polygone</span>
+                    </button>
                 </div>
             </section>
 
@@ -188,6 +192,23 @@
         </div>
     </div>
 
+    <div id="polygonModal" class="modal">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <div class="modal-title">Altitudes dans le polygone</div>
+                <button class="close" onclick="closeModal('polygonModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="polygonChart" class="polygon-chart"></div>
+                <div id="polygonStats" class="profile-stats"></div>
+                <div id="polygonNotes" class="polygon-notes"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('polygonModal')">Fermer</button>
+            </div>
+        </div>
+    </div>
+
     <div id="offlineModal" class="modal">
         <div class="modal-content modal-scroll">
             <div class="modal-header">
@@ -234,6 +255,7 @@
             crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="script.js"></script>
+    <script src="polygon.js"></script>
     <script src="offline.js"></script>
     <script src="geoloc.js"></script>
 </body>

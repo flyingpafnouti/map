@@ -68,7 +68,8 @@ button { font: inherit; color: inherit; }
 
 #map.heading-mode,
 #map.altitude-mode,
-#map.measure-mode { cursor: crosshair; }
+#map.measure-mode,
+#map.polygon-mode { cursor: crosshair; }
 
 /* Floating panel */
 
@@ -428,9 +429,8 @@ body.no-transition .menu-toggle { animation: none; }
     gap: 8px;
 }
 
-/* 3 tiles on the first row, 2 wider tiles on the second */
+/* 3 tiles per row */
 .tools > .tool { grid-column: span 2; }
-.tools > .tool:nth-child(n+4) { grid-column: span 3; }
 
 .tool {
     --hue: #4f46e5;
@@ -478,6 +478,7 @@ body.no-transition .menu-toggle { animation: none; }
 .tool-pink    { --hue: #db2777; --hue-soft: #fce7f3; }
 .tool-emerald { --hue: #059669; --hue-soft: #d1fae5; }
 .tool-teal    { --hue: #0891b2; --hue-soft: #cffafe; }
+.tool-violet  { --hue: #7c3aed; --hue-soft: #ede9fe; }
 
 /* Active map tool (class toggled by script.js) */
 .tool.btn-active {
@@ -1095,6 +1096,89 @@ body.no-transition .menu-toggle { animation: none; }
 }
 
 .profile-stats.offline-stats { grid-template-columns: repeat(3, 1fr); }
+
+.polygon-notes {
+    margin-top: -6px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-3);
+}
+
+.polygon-notes p { margin: 0 0 4px; }
+
+.polygon-notes .polygon-message {
+    margin: 4px 0 8px;
+    font-size: 14px;
+    color: var(--text-2);
+}
+
+.polygon-notes .polygon-error { color: #b91c1c; }
+
+/* Height chart of the polygon tool */
+
+.polygon-chart {
+    position: relative;
+    margin-bottom: 14px;
+}
+
+.polygon-chart svg { display: block; overflow: visible; }
+
+.chart-grid { stroke: var(--border); stroke-width: 1; }
+
+.chart-tick {
+    font-size: 11px;
+    fill: var(--text-3);
+    font-variant-numeric: tabular-nums;
+}
+
+.chart-label {
+    font-size: 11px;
+    fill: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.chart-value {
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--text);
+}
+
+.chart-category {
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--text-2);
+}
+
+.chart-category-sub {
+    font-size: 11px;
+    fill: var(--text-3);
+}
+
+.chart-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--text-3);
+}
+
+.chart-zero { stroke: var(--border-strong); stroke-width: 1; }
+
+.chart-whisker { stroke-width: 2; stroke-linecap: round; }
+.chart-median { stroke: var(--surface); stroke-width: 2; }
+
+.chart-hit { fill: transparent; cursor: default; outline: none; }
+.chart-hit:focus-visible { stroke: var(--border-strong); stroke-width: 1; }
+.chart-hover { opacity: 0.8; }
+
+.chart-tip { line-height: 1.6; }
+.chart-tip b { font-size: 12px; }
+.chart-tip-title { font-weight: 600; color: var(--text-2); }
+
+.chart-caption {
+    margin: 6px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-3);
+}
 
 .btn[hidden] { display: none; }
 

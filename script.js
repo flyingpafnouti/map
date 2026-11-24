@@ -30,6 +30,10 @@ function initMap() {
     createBasemap('openstreetmap').addTo(map);
 
     map.on('click', function(e) {
+        if (polygonMode) {
+            addPolygonPoint(e.latlng);
+            return;
+        }
         if (measureMode) {
             addMeasurePoint(e.latlng.lat, e.latlng.lng);
             return;
@@ -96,6 +100,10 @@ function initMap() {
 
     map.on('contextmenu', function(e) {
         e.originalEvent.preventDefault();
+        if (polygonMode) {
+            finishPolygon();
+            return;
+        }
         if (measureMode) {
             finishMeasure();
             return;
@@ -181,6 +189,7 @@ function updateModeHint() {
     if (headingMode) hints.push('Cap : cliquez deux points');
     if (measureMode) hints.push('Distance : clic gauche pour ajouter, clic droit pour terminer');
     if (altitudeMode) hints.push('Altitude : survolez la carte');
+    if (polygonMode) hints.push('Polygone : cliquez les sommets, clic droit ou premier sommet pour fermer');
     const el = document.getElementById('modeHint');
     el.textContent = hints.join(' · ');
     el.parentElement.classList.toggle('has-mode', hints.length > 0);
@@ -388,6 +397,7 @@ function toggleMeasureMode() {
     measureMode = !measureMode;
     const btn = document.getElementById('measureBtn');
     if (measureMode) {
+        if (polygonMode) togglePolygonMode();
         btn.classList.add('btn-active');
         document.getElementById('map').classList.add('measure-mode');
         map.doubleClickZoom.disable();
@@ -541,7 +551,7 @@ function fetchElevations(points) {
 }
 
 // Point values of the IGN elevation grids, read from the Géoplateforme WMS-R
-// as raw float32 (one pixel centred on the point, about 1 m wide):
+// as raw float32 at their native 0.5 m step:
 // - MNT, bare ground: RGE ALTI;
 // - MNS, surface with trees and roofs: MNS Correl (aerial stereo correlation).
 // Altitudes are NGF-IGN69, in metres. Both grids are read the same way so
@@ -549,17 +559,28 @@ function fetchElevations(points) {
 const IGN_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
 const MNT_LAYER = 'ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES';
 const MNS_LAYER = 'ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES.MNS';
-const WMS_NO_DATA = -1000;   // missing cells come back as -99999
-const POINT_HALF_SIZE = 1e-5; // degrees
+const GRID_STEP = 0.5;        // m, native step of both grids
+const M_PER_DEG_LAT = 111195; // m per degree of latitude, mean Earth radius
 
-function fetchGridValue(layer, lat, lon, signal) {
-    const d = POINT_HALF_SIZE;
+// Missing cells come back as -9999 (gaps in the MNS) or -99999 (outside the
+// coverage). The server resamples with a cubic-like kernel and has no nearest
+// neighbour option, so the cells next to a gap get spurious values: hundreds
+// of metres too high on the valid side (571 m seen beside a 52 m roof), then
+// anything down to -10000. Values below WMS_NO_DATA count as missing, and so
+// does every cell within NO_DATA_MARGIN cells of one.
+const WMS_NO_DATA = -100;
+const NO_DATA_MARGIN = 2;
+
+// Reads a w x h block of a grid over bbox [south, west, north, east] as a
+// Float32Array: rows north to south, columns west to east, raw values (see
+// unusableCells for missing ones).
+function fetchGrid(layer, bbox, w, h, signal) {
     const params = new URLSearchParams({
         SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap',
         LAYERS: layer, STYLES: 'normal', CRS: 'EPSG:4326',
         // WMS 1.3.0 with EPSG:4326: latitude first.
-        BBOX: [lat - d, lon - d, lat + d, lon + d].map(v => v.toFixed(7)).join(','),
-        WIDTH: '1', HEIGHT: '1', FORMAT: 'image/x-bil;bits=32'
+        BBOX: bbox.map(v => v.toFixed(8)).join(','),
+        WIDTH: String(w), HEIGHT: String(h), FORMAT: 'image/x-bil;bits=32'
     });
     return fetch(`${IGN_WMS_URL}?${params}`, { signal })
         .then(response => {
@@ -571,10 +592,54 @@ function fetchGridValue(layer, lat, lon, signal) {
             return response.arrayBuffer();
         })
         .then(buffer => {
-            if (buffer.byteLength < 4) throw new Error('réponse inattendue du service altimétrique');
-            const z = new DataView(buffer).getFloat32(0, true);
-            return z < WMS_NO_DATA ? null : z;
+            if (buffer.byteLength !== w * h * 4) throw new Error('réponse inattendue du service altimétrique');
+            // Little-endian float32; read through a DataView so the host byte
+            // order does not matter.
+            const view = new DataView(buffer);
+            const values = new Float32Array(w * h);
+            for (let i = 0; i < values.length; i++) values[i] = view.getFloat32(i * 4, true);
+            return values;
         });
+}
+
+// 1 for each cell that is missing or within NO_DATA_MARGIN cells of a
+// missing one, 0 for usable cells.
+function unusableCells(values, w, h) {
+    const m = NO_DATA_MARGIN;
+    const missing = new Uint8Array(w * h);
+    for (let i = 0; i < missing.length; i++) missing[i] = values[i] < WMS_NO_DATA ? 1 : 0;
+    // Square dilation, done as a row pass then a column pass.
+    const rowPass = new Uint8Array(w * h);
+    for (let r = 0; r < h; r++) {
+        for (let c = 0; c < w; c++) {
+            let hit = 0;
+            for (let k = Math.max(0, c - m); k <= Math.min(w - 1, c + m) && !hit; k++) hit = missing[r * w + k];
+            rowPass[r * w + c] = hit;
+        }
+    }
+    const out = new Uint8Array(w * h);
+    for (let r = 0; r < h; r++) {
+        for (let c = 0; c < w; c++) {
+            let hit = 0;
+            for (let k = Math.max(0, r - m); k <= Math.min(h - 1, r + m) && !hit; k++) hit = rowPass[k * w + c];
+            out[r * w + c] = hit;
+        }
+    }
+    return out;
+}
+
+// Value of the cell centred on the point, read with NO_DATA_MARGIN cells
+// around it to tell whether it is usable.
+function fetchGridValue(layer, lat, lon, signal) {
+    const n = 2 * NO_DATA_MARGIN + 1;
+    const half = n / 2;
+    const dLat = GRID_STEP / M_PER_DEG_LAT;
+    const dLon = GRID_STEP / (M_PER_DEG_LAT * Math.cos(lat * Math.PI / 180));
+    const bbox = [lat - half * dLat, lon - half * dLon, lat + half * dLat, lon + half * dLon];
+    return fetchGrid(layer, bbox, n, n, signal).then(values => {
+        const centre = NO_DATA_MARGIN * n + NO_DATA_MARGIN;
+        return unusableCells(values, n, n)[centre] ? null : values[centre];
+    });
 }
 
 const round1 = z => (z === null ? null : Math.round(z * 10) / 10);
@@ -806,6 +871,7 @@ function clearMap() {
     }
     if (altitudeMode) toggleAltitudeMode();
     if (measureMode) toggleMeasureMode();
+    if (polygonMode) togglePolygonMode();
     clearHeadingElements();
     clearMeasure();
     waypoints = [];
