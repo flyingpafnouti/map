@@ -540,8 +540,70 @@ function fetchElevations(points) {
         });
 }
 
-function getAltitude(lat, lon) {
-    return fetchElevations([{ lat, lon }]).then(elevations => elevations[0]);
+// Point values of the IGN elevation grids, read from the Géoplateforme WMS-R
+// as raw float32 (one pixel centred on the point, about 1 m wide):
+// - MNT, bare ground: RGE ALTI;
+// - MNS, surface with trees and roofs: MNS Correl (aerial stereo correlation).
+// Altitudes are NGF-IGN69, in metres. Both grids are read the same way so
+// that MNS - MNT (height of trees and buildings) compares like with like.
+const IGN_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
+const MNT_LAYER = 'ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES';
+const MNS_LAYER = 'ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES.MNS';
+const WMS_NO_DATA = -1000;   // missing cells come back as -99999
+const POINT_HALF_SIZE = 1e-5; // degrees
+
+function fetchGridValue(layer, lat, lon, signal) {
+    const d = POINT_HALF_SIZE;
+    const params = new URLSearchParams({
+        SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap',
+        LAYERS: layer, STYLES: 'normal', CRS: 'EPSG:4326',
+        // WMS 1.3.0 with EPSG:4326: latitude first.
+        BBOX: [lat - d, lon - d, lat + d, lon + d].map(v => v.toFixed(7)).join(','),
+        WIDTH: '1', HEIGHT: '1', FORMAT: 'image/x-bil;bits=32'
+    });
+    return fetch(`${IGN_WMS_URL}?${params}`, { signal })
+        .then(response => {
+            if (!response.ok) throw new Error(`service altimétrique indisponible (HTTP ${response.status})`);
+            // Errors come back as XML with a 200 status.
+            if (!(response.headers.get('content-type') || '').startsWith('image/x-bil')) {
+                throw new Error('réponse inattendue du service altimétrique');
+            }
+            return response.arrayBuffer();
+        })
+        .then(buffer => {
+            if (buffer.byteLength < 4) throw new Error('réponse inattendue du service altimétrique');
+            const z = new DataView(buffer).getFloat32(0, true);
+            return z < WMS_NO_DATA ? null : z;
+        });
+}
+
+const round1 = z => (z === null ? null : Math.round(z * 10) / 10);
+
+// Recent results, keyed by position rounded to about 1 m.
+const surfaceCache = new Map();
+const SURFACE_CACHE_SIZE = 500;
+
+// Resolves to { mnt, mns, height } in metres, each null where data is missing.
+function getSurfaceData(lat, lon, signal) {
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (surfaceCache.has(key)) return Promise.resolve(surfaceCache.get(key));
+    return Promise.all([
+        fetchGridValue(MNT_LAYER, lat, lon, signal),
+        fetchGridValue(MNS_LAYER, lat, lon, signal)
+    ]).then(([mnt, mns]) => {
+        const height = mnt === null || mns === null ? null : mns - mnt;
+        const result = { mnt: round1(mnt), mns: round1(mns), height: round1(height) };
+        surfaceCache.set(key, result);
+        if (surfaceCache.size > SURFACE_CACHE_SIZE) surfaceCache.delete(surfaceCache.keys().next().value);
+        return result;
+    });
+}
+
+let altitudeRequest = null; // AbortController of the request in flight
+
+function cancelAltitudeRequest() {
+    if (altitudeTimer) { clearTimeout(altitudeTimer); altitudeTimer = null; }
+    if (altitudeRequest) { altitudeRequest.abort(); altitudeRequest = null; }
 }
 
 function toggleAltitudeMode() {
@@ -558,35 +620,48 @@ function toggleAltitudeMode() {
         map.off('mousemove', onAltitudeMouseMove);
         map.off('mouseout', hideAltitudeTooltip);
         hideAltitudeTooltip();
-        if (altitudeTimer) { clearTimeout(altitudeTimer); altitudeTimer = null; }
+        cancelAltitudeRequest();
         log('Mode Altitude désactivé', 'info');
     }
     updateModeHint();
 }
 
+function formatSurfaceData({ mnt, mns, height }) {
+    const m = z => (z === null ? '—' : `${z.toFixed(1)} m`);
+    return `Sol (MNT) <b>${m(mnt)}</b><br>Surface (MNS) <b>${m(mns)}</b><br>Sursol (MNS − MNT) <b>${m(height)}</b>`;
+}
+
 function onAltitudeMouseMove(e) {
     const lat = e.latlng.lat;
     const lon = e.latlng.lng;
-    showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><i>altitude...</i>`);
+    const point = e.containerPoint;
+    const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    cancelAltitudeRequest();
+    showAltitudeTooltip(point, `${coords}<br><i>altitude...</i>`);
 
-    if (altitudeTimer) clearTimeout(altitudeTimer);
     altitudeTimer = setTimeout(() => {
-        getAltitude(lat, lon)
-            .then(elevation => {
-                if (!altitudeMode) return;
-                if (elevation === null) {
-                    showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><i>pas de donnée</i>`);
+        altitudeTimer = null;
+        const controller = new AbortController();
+        altitudeRequest = controller;
+        getSurfaceData(lat, lon, controller.signal)
+            .then(data => {
+                if (!altitudeMode || controller.signal.aborted) return;
+                altitudeRequest = null;
+                if (data.mnt === null && data.mns === null) {
+                    showAltitudeTooltip(point, `${coords}<br><i>pas de donnée</i>`);
                     return;
                 }
-                showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><b>⛰️ ${elevation} m</b>`);
-                log(`⛰️ Altitude: ${elevation} m (${lat.toFixed(6)}, ${lon.toFixed(6)})`, 'info');
+                showAltitudeTooltip(point, `${coords}<br>${formatSurfaceData(data)}`);
+                const m = z => (z === null ? '—' : `${z} m`);
+                log(`⛰️ MNT ${m(data.mnt)} · MNS ${m(data.mns)} · sursol ${m(data.height)} (${lat.toFixed(6)}, ${lon.toFixed(6)})`, 'info');
             })
             .catch(error => {
-                if (!altitudeMode) return;
-                showAltitudeTooltip(e.containerPoint, `${lat.toFixed(5)}, ${lon.toFixed(5)}<br><i>erreur</i>`);
+                if (!altitudeMode || controller.signal.aborted) return;
+                altitudeRequest = null;
+                showAltitudeTooltip(point, `${coords}<br><i>erreur</i>`);
                 log(`Erreur altitude: ${error.message}`, 'error');
             });
-    }, 400);
+    }, 150);
 }
 
 function showAltitudeTooltip(containerPoint, html) {
