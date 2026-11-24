@@ -571,6 +571,35 @@ const M_PER_DEG_LAT = 111195; // m per degree of latitude, mean Earth radius
 const WMS_NO_DATA = -100;
 const NO_DATA_MARGIN = 2;
 
+// Géoplateforme requests sometimes get no answer at all, and fetch then
+// waits for minutes: a polygon took 181 s while its 8 requests took 6 s in
+// total, one request being stuck. Each request gets a deadline for the
+// response to start and one for the whole body, so a stuck request fails
+// fast and can be retried. read(response) consumes the body.
+const FIRST_BYTE_TIMEOUT = 10000; // ms; answers normally start within 2 s
+const BODY_TIMEOUT = 60000;       // ms; a 4 MB tile on a slow mobile link
+
+function fetchWithDeadline(url, signal, read) {
+    const controller = new AbortController();
+    const onAbort = () => controller.abort(signal.reason);
+    if (signal) {
+        if (signal.aborted) controller.abort(signal.reason);
+        else signal.addEventListener('abort', onAbort, { once: true });
+    }
+    const expire = what => () => controller.abort(new DOMException(`délai dépassé (${what})`, 'TimeoutError'));
+    let timer = setTimeout(expire('pas de réponse'), FIRST_BYTE_TIMEOUT);
+    return fetch(url, { signal: controller.signal })
+        .then(response => {
+            clearTimeout(timer);
+            timer = setTimeout(expire('téléchargement'), BODY_TIMEOUT);
+            return read(response);
+        })
+        .finally(() => {
+            clearTimeout(timer);
+            if (signal) signal.removeEventListener('abort', onAbort);
+        });
+}
+
 // Reads a w x h block of a grid over bbox [south, west, north, east] as a
 // Float32Array: rows north to south, columns west to east, raw values (see
 // unusableCells for missing ones).
@@ -582,15 +611,14 @@ function fetchGrid(layer, bbox, w, h, signal) {
         BBOX: bbox.map(v => v.toFixed(8)).join(','),
         WIDTH: String(w), HEIGHT: String(h), FORMAT: 'image/x-bil;bits=32'
     });
-    return fetch(`${IGN_WMS_URL}?${params}`, { signal })
-        .then(response => {
-            if (!response.ok) throw new Error(`service altimétrique indisponible (HTTP ${response.status})`);
-            // Errors come back as XML with a 200 status.
-            if (!(response.headers.get('content-type') || '').startsWith('image/x-bil')) {
-                throw new Error('réponse inattendue du service altimétrique');
-            }
-            return response.arrayBuffer();
-        })
+    return fetchWithDeadline(`${IGN_WMS_URL}?${params}`, signal, response => {
+        if (!response.ok) throw new Error(`service altimétrique indisponible (HTTP ${response.status})`);
+        // Errors come back as XML with a 200 status.
+        if (!(response.headers.get('content-type') || '').startsWith('image/x-bil')) {
+            throw new Error('réponse inattendue du service altimétrique');
+        }
+        return response.arrayBuffer();
+    })
         .then(buffer => {
             if (buffer.byteLength !== w * h * 4) throw new Error('réponse inattendue du service altimétrique');
             // Little-endian float32; read through a DataView so the host byte

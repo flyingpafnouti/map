@@ -41,9 +41,9 @@ export function openPolygon3D(pts) {
     const photo = photoSize(grid);
 
     Promise.all([
-        fetchGrid(MNT_LAYER, grid.bbox, grid.cols, grid.rows, controller.signal),
-        fetchGrid(MNS_LAYER, grid.bbox, grid.cols, grid.rows, controller.signal),
-        loadPhoto(grid.bbox, photo.w, photo.h)
+        fetchGridRetrying(MNT_LAYER, grid.bbox, grid.cols, grid.rows, controller.signal),
+        fetchGridRetrying(MNS_LAYER, grid.bbox, grid.cols, grid.rows, controller.signal),
+        loadPhoto(grid.bbox, photo.w, photo.h, controller.signal)
     ]).then(([mnt, mns, texture]) => {
         if (controller.signal.aborted || modal.style.display === 'none') { texture.dispose(); return; }
         status.hidden = true;
@@ -105,19 +105,32 @@ function photoSize(grid) {
     return { w: Math.max(2, Math.round(grid.widthM * k)), h: Math.max(2, Math.round(grid.heightM * k)) };
 }
 
-function loadPhoto(bbox, w, h) {
+// The photo goes through fetchWithDeadline (script.js) like the grids, so a
+// stuck request is retried instead of leaving the view on "Chargement".
+function loadPhoto(bbox, w, h, signal) {
     const params = new URLSearchParams({
         SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap',
         LAYERS: PHOTO_LAYER, STYLES: '', CRS: 'EPSG:4326',
         BBOX: bbox.map(v => v.toFixed(8)).join(','),
         WIDTH: String(w), HEIGHT: String(h), FORMAT: 'image/jpeg'
     });
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    return loader.loadAsync(`${IGN_WMS_URL}?${params}`).then(texture => {
+    const download = attempt => fetchWithDeadline(`${IGN_WMS_URL}?${params}`, signal, response => {
+        if (!response.ok || !(response.headers.get('content-type') || '').startsWith('image/')) {
+            throw new Error('orthophoto indisponible');
+        }
+        return response.blob();
+    }).catch(err => {
+        if (signal.aborted || attempt >= POLY_RETRIES) throw err;
+        return download(attempt + 1);
+    });
+    return download(0).then(blob => {
+        const objectUrl = URL.createObjectURL(blob);
+        return new THREE.TextureLoader().loadAsync(objectUrl)
+            .finally(() => URL.revokeObjectURL(objectUrl));
+    }).then(texture => {
         texture.colorSpace = THREE.SRGBColorSpace;
         return texture;
-    }, () => { throw new Error('orthophoto indisponible'); });
+    });
 }
 
 function buildScene(pts, grid, mnt, mns, texture) {
